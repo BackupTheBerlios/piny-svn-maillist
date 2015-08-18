@@ -1,0 +1,408 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Piny-svn] r3 - / classes/db classes/seed classes/yacy sql yacy
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/piny-svn/2007-March/index.html" >
+   <LINK REL="made" HREF="mailto:piny-svn%40lists.berlios.de?Subject=Re%3A%20%5BPiny-svn%5D%20r3%20-%20/%20classes/db%20classes/seed%20classes/yacy%20sql%20yacy&In-Reply-To=%3C200703061942.l26Jgh53026070%40sheep.berlios.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000000.html">
+   <LINK REL="Next"  HREF="000002.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Piny-svn] r3 - / classes/db classes/seed classes/yacy sql yacy</H1>
+    <B>karlchenofhell at BerliOS</B> 
+    <A HREF="mailto:piny-svn%40lists.berlios.de?Subject=Re%3A%20%5BPiny-svn%5D%20r3%20-%20/%20classes/db%20classes/seed%20classes/yacy%20sql%20yacy&In-Reply-To=%3C200703061942.l26Jgh53026070%40sheep.berlios.de%3E"
+       TITLE="[Piny-svn] r3 - / classes/db classes/seed classes/yacy sql yacy">karlchenofhell at mail.berlios.de
+       </A><BR>
+    <I>Tue Mar  6 20:42:43 CET 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000000.html">[Piny-svn] r2 - in classes: db server
+</A></li>
+        <LI>Next message: <A HREF="000002.html">[Piny-svn] r4 - classes/db classes/seed classes/server classes/yacy	sql yacy
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1">[ date ]</a>
+              <a href="thread.html#1">[ thread ]</a>
+              <a href="subject.html#1">[ subject ]</a>
+              <a href="author.html#1">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Author: karlchenofhell
+Date: 2007-03-06 20:42:42 +0100 (Tue, 06 Mar 2007)
+New Revision: 3
+
+Added:
+   sql/
+   sql/openhellos.sql
+   sql/seeddb.sql
+Modified:
+   classes/db/db.php
+   classes/seed/seeddb.php
+   classes/yacy/core.php
+   yacy/hello.php
+Log:
+- added SQL-table create statements for seed-db and openhellos
+- extended db a bit
+- added openhellos to hello.php to verify the passed key on handshake
+- added corePeerPing function
+
+Modified: classes/db/db.php
+===================================================================
+--- classes/db/db.php	2007-03-06 15:21:54 UTC (rev 2)
++++ classes/db/db.php	2007-03-06 19:42:42 UTC (rev 3)
+@@ -38,9 +38,9 @@
+ 		 * @return an associative array &lt;code&gt;[line-number]['column-name'] =&gt; value&lt;/code&gt;
+ 		 */
+ 		/* public */
+-		function getAll() {
++		function getAll($colarrkey = null) {
+ 			$sql = 'SELECT * FROM `'. $this-&gt;table .'`;';
+-			return $this-&gt;fetchArray($sql, DB_TYPE.'_ASSOC');
++			return $this-&gt;fetchArray($sql, DB_TYPE.'_ASSOC', $colarrkey);
+ 		}
+ 		
+ 		/**
+@@ -58,9 +58,9 @@
+ 		 *                        if no row matching &lt;code&gt;cols&lt;/code&gt; or &lt;code&gt;where&lt;/code&gt; could be found.&lt;/p&gt;
+ 		 */
+ 		/* public */
+-		function getAssoc($cols, $where = null) {
++		function getAssoc($cols, $where = null, $colarrkey = null) {
+ 			$sql = $this-&gt;assSelect($cols) .' FROM `'. $this-&gt;table .'` '. $this-&gt;assWhere($where) .';';
+-			return $this-&gt;db-&gt;fetchArray($sql, DB_TYPE.'_ASSOC');
++			return $this-&gt;db-&gt;fetchArray($sql, DB_TYPE.'_ASSOC', $colarrkey = null);
+ 		}
+ 		
+ 		/**
+@@ -78,9 +78,9 @@
+ 		 *                        if no row matching &lt;code&gt;cols&lt;/code&gt; or &lt;code&gt;where&lt;/code&gt; could be found.&lt;/p&gt;
+ 		 */
+ 		/* public */
+-		function get($cols, $where = null) {
++		function get($cols, $where = null, $colarrkey = null) {
+ 			$sql = $this-&gt;assSelect($cols) .' FROM `'. $this-&gt;table .'` '. $this-&gt;assWhere($where) .';';
+-			return $this-&gt;fetchArray($sql, DB_TYPE.'_NUM');
++			return $this-&gt;fetchArray($sql, DB_TYPE.'_NUM', $colarrkey);
+ 		}
+ 		
+ 		/**
+@@ -109,13 +109,65 @@
+ 			return $r;
+ 		}
+ 		
++		function add($cols) {
++			$sql = 'INSERT INTO `'. $this-&gt;table .'` (';
++			foreach (array_keys($cols[0]) as $col) {
++				$sql .= $col .',';
++			}
++			$sql = substr($sql, 0, -1) .') VALUES (';
++			foreach ($cols as $col) {
++				foreach ($col as $value) {
++					if (is_string($value)) {
++						$sql .= &quot;'$value',&quot;;
++					} else {
++						$sql .= &quot;$value,&quot;:
++					}
++				}
++				$sql = substr($sql, 0, -1) .'), (';
++			}
++			$sql = substr($sql, 0, -2);
++			return $this-&gt;query($sql, $this-&gt;conn);
++		}
++		
++		/* public */
++		function addSingle($cols) {
++			$sql = 'INSERT INTO `'. $this-&gt;table .'` (';
++			foreach (array_keys($cols) as $col) {
++				$sql .= $col .',';
++			}
++			$sql = substr($sql, 0, -1) .') VALUES (';
++			foreach ($cols as $value) {
++				if (is_string($value)) {
++					$sql .= &quot;'$value',&quot;;
++				} else {
++					$sql .= &quot;$value,&quot;:
++				}
++			}
++			$sql = substr($sql, 0, -1) .';';
++			return $this-&gt;query($sql, $this-&gt;conn) || die(ERR_DB_QUERY.':'. $this-&gt;error());
++		}
++		
++		/* public */
++		function putSingle($cols) {
++		}
++		
++		function updateSingle($cols, $where) {
++		}
++		
++		function removeSingle($where) {
++		}
++		
+ 		/* private */
+-		function fetchArray($sql, $flags) {
++		function fetchArray($sql, $flags, $colarrkey = null) {
+ 			if ($sql == null || !is_string($sql)) return null;
+ 			$res = $this-&gt;query($sql, $this-&gt;conn) || die(ERR_DB_QUERY.':'. $this-&gt;error());
+ 			$r = array();
+ 			while ($row = $fetch_array($res, $flags)) {
+-				$r[] = $row;
++				if ($colarrkey == null) {
++					$r[] = $row;
++				} else {
++					$r[$row[$colarrkey]] = $row;
++				}
+ 			}
+ 			$free_result($res);
+ 			return $r;
+
+Modified: classes/seed/seeddb.php
+===================================================================
+--- classes/seed/seeddb.php	2007-03-06 15:21:54 UTC (rev 2)
++++ classes/seed/seeddb.php	2007-03-06 19:42:42 UTC (rev 3)
+@@ -1,7 +1,7 @@
+ &lt;?
+ 	
+-	require_once('classes/server/settings.php');
+-	require_once('classes/db/db.php');
++	include_once('../server/settings.php');
++	require_once('db/db.php');
+ 	
+ 	function splitArray($array, $char) {
+ 		$r = array();
+@@ -23,13 +23,7 @@
+         
+         function peer($seed) {
+         	if (is_string($seed)) {
+-				switch (substr($seed, 0, 1)) {
+-					case 'p': $plainlist = substr($seed, 2); break;                   // plain text
+-					case 'b': $plainlist = base64_decode(substr($seed, 2)); break;    // base64-encoded
+-					default: $plainlist = substr($seed, 2); break;
+-				}
+-				$plainlist = substr($plainlist, 1, -1);        // kill '{' on beginning and '}' at the end
+-				$this-&gt;seed = splitArray(explode(',', $plainlist), '=');
++        		$this-&gt;seed = self::getArrayFromSeed($seed);
+ 			} else if (is_array($seed)) {
+ 				$this-&gt;seed = $seed;
+ 			}
+@@ -75,6 +69,16 @@
+         function toSeed() {
+         	return '{'. implode(',', $this-&gt;seed) .'}';
+         }
++        
++        function getArrayFromSeed($seed) {
++			switch (substr($seed, 0, 1)) {
++				case 'p': $plainlist = substr($seed, 2); break;                   // plain text
++				case 'b': $plainlist = base64_decode(substr($seed, 2)); break;    // base64-encoded
++				default: $plainlist = substr($seed, 2); break;
++			}
++			$plainlist = substr($plainlist, 1, -1);        // kill '{' on beginning and '}' at the end
++			return splitArray(explode(',', $plainlist), '=');
++		}
+     }
+     
+     function seeddbGetPeer($seed) {
+@@ -82,7 +86,53 @@
+     }
+     
+     function seeddbGetMyPeer() {
+-    	return new peer(dbGetFromHash(MYHASH, SEEDDB));
++    	$seeddb = new db(SEEDDB);
++    	$arr = $seeddb-&gt;getAssoc(
++    			array(
++    					'Hash',
++    					'Type' =&gt; 'PeerType',
++    					'IPType',
++    					'Tags',
++    					'Port',
++    					'IP',
++    					'rI',
++    					'sI',
++    					'rU',
++    					'rI',
++    					'Uptime',
++    					'Version',
++    					'LastSeen',
++    					'Name',
++    					'CCount',
++    					'SCount',
++    					'news',
++    					'USpeed',
++    					'CRTCnt',
++    					'CRWCnt',
++    					'BDate',
++    					'LCount',
++    					'ICount',
++    					'ISpeed',
++    					'RSpeed',
++    					'Flags'
++    			),
++    			array('Hash' =&gt; MYHASH)
++    	);
++    	if ($arr === false) throw new Exception('MYHASH could not be found in seed-db');
++    	return new seed($arr[0]);
+     }
+ 	
++	function updatePeer($hash, $version, $uptime, $type) {
++		$db = new db(SEEDDB);
++		return $db-&gt;updateSingle(array('Version' =&gt; $version, 'Uptime' =&gt; $uptime, 'Type' =&gt; $type), array('Hash' =&gt; $hash));
++	}
++	
++	function updateFromSeeds($seeds) {
++		$db = new db(SEEDDB);
++		$i = 0;
++		foreach ($seeds as $seed) {
++			if ($db-&gt;putSingle(peer::getArrayFromSeed($seed))) $i++;
++		}
++		return $i;
++	}
+ ?&gt;
+\ No newline at end of file
+
+Modified: classes/yacy/core.php
+===================================================================
+--- classes/yacy/core.php	2007-03-06 15:21:54 UTC (rev 2)
++++ classes/yacy/core.php	2007-03-06 19:42:42 UTC (rev 3)
+@@ -1,6 +1,25 @@
+ &lt;?php
+ 	
++	include_once('../server/settings.php');
++	include_once('yacy/errors.php');
++	require_once('db/db.php');
++	require_once('seed/seeddb.php');
++	
+ 	function corePeerPing($peer) {
++		$key = rand(0,10000);
++		$db = new db(OPENHELLOS);
++		if (!$db-&gt;addSingle(array('key' =&gt; $key, 'Hash' =&gt; $peer-&gt;getHash()))) die(ERR_YACY_DB_SAVE);
++		$host = '<A HREF="http://">http://</A>'. $peer-&gt;getAddress() .'/yacy/hello.html';
++		$args = &quot;key=$key&amp;seed=&quot;.MYHASH.&quot;&amp;count=20&quot;;
++		$hello = explode(&quot;\n&quot;, file_get_contents(&quot;$host?$args&quot;));
++		echo 'corePeerPing '. $peer-&gt;getHash() .':';
++		echo updatePeer(
++				$peer-&gt;getHash(),
++				explode('=', $hello[0])[1],
++				explode('=', $hello[1])[1],
++				explode('=', $hello[4])[1]
++		) . chr(10);
++		updateFromSeeds(array_slice($hello, 5));
+ 	}
+ 	
+ 	function corePeerArrival($peer) {
+
+Added: sql/openhellos.sql
+===================================================================
+--- sql/openhellos.sql	2007-03-06 15:21:54 UTC (rev 2)
++++ sql/openhellos.sql	2007-03-06 19:42:42 UTC (rev 3)
+@@ -0,0 +1,7 @@
++-- openhellos: holding the hashes to the peers and the key used to communicate
++
++CREATE TABLE `openhellos` (
++	`Hash` char(12),
++	`key` smallint UNSIGNED,
++	PRIMARY KEY (`Hash`)
++);
+\ No newline at end of file
+
+Added: sql/seeddb.sql
+===================================================================
+--- sql/seeddb.sql	2007-03-06 15:21:54 UTC (rev 2)
++++ sql/seeddb.sql	2007-03-06 19:42:42 UTC (rev 3)
+@@ -0,0 +1,33 @@
++-- `seeddb` table structure
++--
++-- FlexWidthArray properties: rowdef=byte[] key-20, byte[] node-480
++
++CREATE TABLE `piny_seeddb` (
++	`Hash` char(12),			-- peer-hash, 12 byte
++	`Type` tinyint,				-- peer-type: 0 = virgin, 1 = junior, 2 = senior, 3 = principal
++	`IPType` varchar(40),		-- always &quot;&empty;&quot; as far as I have seen
++	`Tags` varchar(255),		-- self-defined tags for the own index
++	`Port` smallint UNSIGNED,	-- peer-port (0-65535)
++	`IP` varchar(40),			-- peer-ip or (if set) static hostname
++	`rI` integer UNSIGNED,		-- number of received words
++	`sI` integer UNSIGNED,		-- number of sent words
++	`rU` integer UNSIGNED,		-- number of received URLs
++	`sU` integer UNSIGNED,		-- number of sent URLs
++	`Uptime` timestamp,			-- the peer's uptime
++	`Version` double(14,12),	-- the peer's yacy-version, i.e. v13.5230123443
++	`LastSeen` timestamp,		-- time this peer was last pinged
++	`Name` varchar(40),			-- the peer's name
++	`CCount` float(5),			-- connects per hour, i.e. 0.48
++	`SCount` smallint UNSIGNED,	-- number of seeds, this peer has stored
++	`news` varchar(255)			-- any news this peer knows about
++	`USpeed` smallint UNSIGNED,	-- computed uplink speed of this peer
++	`CRTCnt` smallint UNSIGNED,	-- number of files: citation rank other
++	`CRWCnt` smallint UNSIGNED,	-- number of files: citation rank own
++	`BDate` timestamp,			-- timestamp of first start-up
++	`LCount` integer UNSIGNED,	-- number of links this peer has stored (LURL)
++	`ICount` integer UNSIGNED,	-- number of words this peer has stored (RWI)
++	`ISpeed` float(5),			-- indexed pages per minute, PPM
++	`RSpeed` float(5),			-- queries per minute
++	`Flags` char(4),			-- peer-flags
++	PRIMARY KEY (`Hash`)
++);
+
+Modified: yacy/hello.php
+===================================================================
+--- yacy/hello.php	2007-03-06 15:21:54 UTC (rev 2)
++++ yacy/hello.php	2007-03-06 19:42:42 UTC (rev 3)
+@@ -1,10 +1,12 @@
+ &lt;?php
+ 	
+ 	include_once('../classes/server/settings.php');
+-	require_once('classes/seed/seeddb.php');
+-	require_once('classes/yacy/client.php');
+-	require_once('classes/yacy/version.php');
+-	require_once('classes/yacy/core.php');
++	include_once('errors.php');
++	require_once('seed/seeddb.php');
++	require_once('yacy/client.php');
++	require_once('yacy/version.php');
++	require_once('yacy/core.php');
++	require_once('db/db.php');
+ 	
+ 	$post = settingsCheckInput($_GET);
+ 	
+@@ -13,6 +15,9 @@
+ 		$key = $post['key'];
+ 		$count = $post['count'];
+ 		
++		$db = new db(OPENHELLOS);
++		if (!$sb-&gt;removeSingle(array('Hash' =&gt; $peer-getHash()))) die(ERR_YACY_HELLO_NO_KEY.': '. $peer-&gt;getHash());
++		
+ 		$myversion = settingsGetVersion();
+ 		$uptime = settingsGetUptime();
+ 		
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000000.html">[Piny-svn] r2 - in classes: db server
+</A></li>
+	<LI>Next message: <A HREF="000002.html">[Piny-svn] r4 - classes/db classes/seed classes/server classes/yacy	sql yacy
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1">[ date ]</a>
+              <a href="thread.html#1">[ thread ]</a>
+              <a href="subject.html#1">[ subject ]</a>
+              <a href="author.html#1">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/piny-svn">More information about the Piny-svn
+mailing list</a><br>
+</body></html>

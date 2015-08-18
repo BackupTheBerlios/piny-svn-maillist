@@ -1,0 +1,337 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Piny-svn] r5 - classes/db classes/seed classes/server classes/yacy	sql yacy
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/piny-svn/2007-March/index.html" >
+   <LINK REL="made" HREF="mailto:piny-svn%40lists.berlios.de?Subject=Re%3A%20%5BPiny-svn%5D%20r5%20-%20classes/db%20classes/seed%20classes/server%20classes/yacy%0A%09sql%20yacy&In-Reply-To=%3C200703062342.l26NgpIn019127%40sheep.berlios.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000002.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Piny-svn] r5 - classes/db classes/seed classes/server classes/yacy	sql yacy</H1>
+    <B>karlchenofhell at BerliOS</B> 
+    <A HREF="mailto:piny-svn%40lists.berlios.de?Subject=Re%3A%20%5BPiny-svn%5D%20r5%20-%20classes/db%20classes/seed%20classes/server%20classes/yacy%0A%09sql%20yacy&In-Reply-To=%3C200703062342.l26NgpIn019127%40sheep.berlios.de%3E"
+       TITLE="[Piny-svn] r5 - classes/db classes/seed classes/server classes/yacy	sql yacy">karlchenofhell at mail.berlios.de
+       </A><BR>
+    <I>Wed Mar  7 00:42:51 CET 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000002.html">[Piny-svn] r4 - classes/db classes/seed classes/server classes/yacy	sql yacy
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#3">[ date ]</a>
+              <a href="thread.html#3">[ thread ]</a>
+              <a href="subject.html#3">[ subject ]</a>
+              <a href="author.html#3">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Author: karlchenofhell
+Date: 2007-03-07 00:42:50 +0100 (Wed, 07 Mar 2007)
+New Revision: 5
+
+Modified:
+   classes/db/db.php
+   classes/seed/seeddb.php
+   classes/server/settings.php
+   classes/yacy/client.php
+   sql/seeddb.sql
+   yacy/hello.php
+Log:
+- hello returns nice values now
+- fixed minor bugs in seeddb and elsewhere
+
+Modified: classes/db/db.php
+===================================================================
+--- classes/db/db.php	2007-03-06 21:40:14 UTC (rev 4)
++++ classes/db/db.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -61,6 +61,7 @@
+ 		 *                        All items of the array are AND-combined.&lt;/p&gt;
+ 		 *                     &lt;p&gt;If a string is passed, it will be used as the complete &lt;code&gt;WHERE&lt;/code&gt;-part of the SQL-statement.&lt;/p&gt;
+ 		 *                     &lt;p&gt;If &lt;code&gt;null&lt;/null&gt; is passed, or the argument is not used at all, the selection won't be restricted.&lt;/p&gt;
++		 * @param string colorarrkey &lt;p&gt;
+ 		 * @return             &lt;p&gt;an non-associative array &lt;code&gt;[line-number][column-number] =&gt; value&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;
+ 		 *                        if no row matching &lt;code&gt;cols&lt;/code&gt; or &lt;code&gt;where&lt;/code&gt; could be found.&lt;/p&gt;
+ 		 */
+@@ -83,7 +84,6 @@
+ 		 *                     &lt;p&gt;If &lt;code&gt;null&lt;/null&gt; is passed, or the argument is not used at all, the selection won't be restricted.&lt;/p&gt;
+ 		 * @return             &lt;p&gt;an &lt;code&gt;stdClass&lt;/code&gt;-object containing the values of all selected columns as public variables or &lt;code&gt;false&lt;/code&gt;
+ 		 *                        if no row matching &lt;code&gt;cols&lt;/code&gt; or &lt;code&gt;where&lt;/code&gt; could be found.&lt;/p&gt;
+-		 * @throws Exception   if either &lt;code&gt;cols&lt;/code&gt; or &lt;/code&gt;where&lt;/where&gt; is not usable.
+ 		 */
+ 		/* public */
+ 		function getSingle($cols, $where) {
+
+Modified: classes/seed/seeddb.php
+===================================================================
+--- classes/seed/seeddb.php	2007-03-06 21:40:14 UTC (rev 4)
++++ classes/seed/seeddb.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -4,6 +4,11 @@
+ 	include_once('server/settings.php');
+ 	require_once('db/db.php');
+ 	
++	define(PEERTYPE_PRINCIPAL, 'principal');
++	define(PEERTYPE_VIRGIN,    'virgin');
++	define(PEERTYPE_SENIOR,    'senior');
++	define(PEERTYPE_JUNIOR,    'junior');
++	
+ 	function splitArray($array, $char) {
+ 		$r = array();
+ 		$num = 0;
+@@ -94,18 +99,27 @@
+         }
+         
+         function getAddress() {
+-        	echo var_dump($this-&gt;seed);
+         	return $this-&gt;getIP() .':'. $this-&gt;getPort();
+         }
+         
+         function toB64Seed() {
+-        	return base64_encode($this-&gt;toSeed());
++        	return 'b|'. base64_encode($this-&gt;toSeed());
+         }
+         
+-        function toSeed() {
+-        	return '{'. implode(',', $this-&gt;seed) .'}';
++        function toPlainSeed() {
++        	return 'p|'. $this-&gt;toSeed();
+         }
+         
++        function toSeed($braces = true) {
++        	if ($braces) $r = '{';
++        	foreach ($this-&gt;seed as $key =&gt; $value) {
++        		if ($key != 'PeerType') $r .= &quot;$key=$value,&quot;;
++        	}
++        	$r = substr($r, 0, -1);
++        	if ($braces) $sql .= '}';
++        	return $r;
++        }
++        
+         function getArrayFromSeed($seed) {
+ 			switch (substr($seed, 0, 1)) {
+ 				case 'p': $plainlist = substr($seed, 2); break;                   // plain text
+@@ -126,12 +140,53 @@
+     	return new peer($seed);
+     }
+     
++    function seeddbGetPeerFromHash($hash) {
++    }
++    
++    function seeddbGetRandomSeeds($count, $includeMe = true) {
++    	$seeddb = new db(SEEDDB);
++    	$arr[] = $seeddb-&gt;getAssoc(
++    			array(
++    					'Hash',
++    					'PeerType',
++    					'IPType',
++    					'Tags',
++    					'Port',
++    					'IP',
++    					'rI',
++    					'sI',
++    					'rU',
++    					'rI',
++    					'Uptime',
++    					'Version',
++    					'LastSeen',
++    					'Name',
++    					'CCount',
++    					'SCount',
++    					'news',
++    					'USpeed',
++    					'CRTCnt',
++    					'CRWCnt',
++    					'BDate',
++    					'LCount',
++    					'ICount',
++    					'ISpeed',
++    					'RSpeed',
++    					'Flags'
++    			));
++    	if (count($arr) &lt; $count) $count = count($arr);
++    	if ($count &gt; 1) $r = array_rand($arr, $count - 1);
++    	$mypeer = seeddbGetMyPeer();
++    	$r[] = $mypeer-&gt;toB64Seed();
++    	return $r;
++    }
++    
+     function seeddbGetMyPeer() {
+     	$seeddb = new db(SEEDDB);
+     	$arr = $seeddb-&gt;getAssoc(
+     			array(
+     					'Hash',
+-    					'Type' =&gt; 'PeerType',
++    					'PeerType',
+     					'IPType',
+     					'Tags',
+     					'Port',
+
+Modified: classes/server/settings.php
+===================================================================
+--- classes/server/settings.php	2007-03-06 21:40:14 UTC (rev 4)
++++ classes/server/settings.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -11,15 +11,17 @@
+ 	define(DB_HOST, 'localhost');
+ 	define(DB_PORT, '3306');
+ 	define(DB_USER, 'root');
+-	define(DB_PWD, 'esC4p3n0w');
++	define(DB_PWD, '');
+ 	define(DB_NAME, 'piny');
+ 	
+ 	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+ 	
+ 	function settingsGetVersion() {
++		return 0.5;
+ 	}
+ 	
+ 	function settingsGetUptime() {
++		return 0;
+ 	}
+ 	
+ 	function settingsCheckInput($post) {
+
+Modified: classes/yacy/client.php
+===================================================================
+--- classes/yacy/client.php	2007-03-06 21:40:14 UTC (rev 4)
++++ classes/yacy/client.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -7,14 +7,14 @@
+ 	
+ 	function clientQueryURLCount($peer) {
+ 		$mypeer = seeddbGetMyPeer();
+-		$request = '<A HREF="http://">http://</A>'. $peer-&gt;getAddress() .'/query.html'
++		$request = '<A HREF="http://">http://</A>'. $peer-&gt;getAddress() .'/yacy/query.html'
+ 				.'?iam='. $mypeer-&gt;getHash()
+ 				.'&amp;youare='. $peer-&gt;getHash()
+ 				.'&amp;key='
+ 				.'&amp;object=lurlcount'
+ 				.'&amp;env='
+ 				.'&amp;ttl=0';
+-		$result = splitArray(file_get_contents($request), '=');
++		$result = splitArray(explode(&quot;\n&quot;, file_get_contents($request)), '=');
+ 		return $result['response'];
+ 	}
+ 	
+
+Modified: sql/seeddb.sql
+===================================================================
+--- sql/seeddb.sql	2007-03-06 21:40:14 UTC (rev 4)
++++ sql/seeddb.sql	2007-03-06 23:42:50 UTC (rev 5)
+@@ -4,7 +4,7 @@
+ 
+ CREATE TABLE `piny_seeddb` (
+ 	`Hash` char(12),			-- peer-hash, 12 byte
+-	`Type` tinyint,				-- peer-type: 0 = virgin, 1 = junior, 2 = senior, 3 = principal
++	`PeerType` varchar(9),			-- peer-type: virgin, junior, senior, principal
+ 	`IPType` varchar(40),		-- always &quot;&empty;&quot; as far as I have seen
+ 	`Tags` varchar(255),		-- self-defined tags for the own index
+ 	`Port` smallint UNSIGNED,	-- peer-port (0-65535)
+@@ -16,7 +16,7 @@
+ 	`Uptime` timestamp,			-- the peer's uptime
+ 	`Version` double(14,12),	-- the peer's yacy-version, i.e. v13.5230123443
+ 	`LastSeen` timestamp,		-- time this peer was last pinged
+-	`name` varchar(40),			-- the peer's name
++	`Name` varchar(40),			-- the peer's name
+ 	`CCount` float(5),			-- connects per hour, i.e. 0.48
+ 	`SCount` smallint UNSIGNED,	-- number of seeds, this peer has stored
+ 	`news` varchar(255),			-- any news this peer knows about
+
+Modified: yacy/hello.php
+===================================================================
+--- yacy/hello.php	2007-03-06 21:40:14 UTC (rev 4)
++++ yacy/hello.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -1,6 +1,6 @@
+ &lt;?php
+ 	
+-	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/classes/');
+ 	
+ 	include_once('server/settings.php');
+ 	include_once('./errors.php');
+@@ -10,8 +10,7 @@
+ 	require_once('yacy/core.php');
+ 	require_once('db/db.php');
+ 	
+-	$post = settingsCheckInput($_GET);
+-	
++	$post = settingsCheckInput($_REQUEST);
+ 	if ($post['key'] &amp;&amp; $post['seed'] &amp;&amp; $post['count']) {
+ 		$peer = seeddbGetPeer($post['seed']);
+ 		$key = $post['key'];
+@@ -20,9 +19,6 @@
+ 		$db = new db(OPENHELLOS);
+ 		if (!$db-&gt;removeSingle(array('Hash' =&gt; $peer-&gt;getHash()))) ;//die(ERR_YACY_HELLO_NO_KEY.': '. $peer-&gt;getHash());
+ 		
+-		$myversion = settingsGetVersion();
+-		$uptime = settingsGetUptime();
+-		
+ 		$urls = -1;
+ 		$clientip = $_SERVER['REMOTE_ADDR'];
+ 		$reportedip = $peer-&gt;getIP();
+@@ -42,7 +38,7 @@
+ 			$urls = clientQueryURLCount($peer);
+ 		}
+ 		
+-		$peer-&gt;setLastSeenUTC();
++		//$peer-&gt;setLastSeenUTC();
+ 		
+ 		if ($urls &gt;= 0) {
+ 			if ($peer-&gt;getPeerType == PEERTYPE_PRINCIPAL) {
+@@ -59,14 +55,23 @@
+ 			}
+ 		}
+ 		
+-		$seeds = seeddbGetRandomSeeds($count, true);
++		$myversion = settingsGetVersion();
++		$uptime = settingsGetUptime();
++		$mytime = date('YmdHis');
++		$mypeer = seeddbGetMyPeer();
++		$mytype = $mypeer-&gt;getPeerType();
+ 		
+ 		$result = &quot;version=$myversion\n&quot;
+ 				.&quot;uptime=$uptime\n&quot;
+ 				.&quot;yourip=$yourip\n&quot;
+ 				.&quot;yourtype=$yourtype\n&quot;
+-				.&quot;mytype=$mytype\n&quot;
+-				.implode(&quot;\n&quot;, $seeds);
++				.&quot;mytime=$mytime\n&quot;
++				.&quot;mytype=$mytype\n&quot;;
++		$i = 0;
++		foreach (seeddbGetRandomSeeds($count, true) as $seed) {
++			$result .= &quot;seed$i=$seed\n&quot;;
++			$i++;
++		}
+ 		
+ 		echo $result;
+ 		flush();
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000002.html">[Piny-svn] r4 - classes/db classes/seed classes/server classes/yacy	sql yacy
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#3">[ date ]</a>
+              <a href="thread.html#3">[ thread ]</a>
+              <a href="subject.html#3">[ subject ]</a>
+              <a href="author.html#3">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/piny-svn">More information about the Piny-svn
+mailing list</a><br>
+</body></html>

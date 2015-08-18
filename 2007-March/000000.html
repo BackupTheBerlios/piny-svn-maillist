@@ -1,0 +1,292 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Piny-svn] r2 - in classes: db server
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/piny-svn/2007-March/index.html" >
+   <LINK REL="made" HREF="mailto:piny-svn%40lists.berlios.de?Subject=Re%3A%20%5BPiny-svn%5D%20r2%20-%20in%20classes%3A%20db%20server&In-Reply-To=%3C200703061521.l26FLu5e023613%40sheep.berlios.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000001.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Piny-svn] r2 - in classes: db server</H1>
+    <B>karlchenofhell at BerliOS</B> 
+    <A HREF="mailto:piny-svn%40lists.berlios.de?Subject=Re%3A%20%5BPiny-svn%5D%20r2%20-%20in%20classes%3A%20db%20server&In-Reply-To=%3C200703061521.l26FLu5e023613%40sheep.berlios.de%3E"
+       TITLE="[Piny-svn] r2 - in classes: db server">karlchenofhell at mail.berlios.de
+       </A><BR>
+    <I>Tue Mar  6 16:21:56 CET 2007</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000001.html">[Piny-svn] r3 - / classes/db classes/seed classes/yacy sql yacy
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#0">[ date ]</a>
+              <a href="thread.html#0">[ thread ]</a>
+              <a href="subject.html#0">[ subject ]</a>
+              <a href="author.html#0">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Author: karlchenofhell
+Date: 2007-03-06 16:21:54 +0100 (Tue, 06 Mar 2007)
+New Revision: 2
+
+Added:
+   classes/db/errors.php
+Modified:
+   classes/db/db.php
+   classes/server/settings.php
+Log:
+- added db-class
+
+Modified: classes/db/db.php
+===================================================================
+--- classes/db/db.php	2007-03-04 21:02:36 UTC (rev 1)
++++ classes/db/db.php	2007-03-06 15:21:54 UTC (rev 2)
+@@ -1,3 +1,159 @@
+ &lt;?php
+-
++	
++	include_once('../server/settings.php');
++	include_once('db/errors.php');
++	
++	class db {
++		var $conn;				// connection resource
++		var $table;				// name of the table
++		
++		var $connect;			// name of connect-method, dependant on DB_TYPE
++		var $close;				// name of close-method, dependant on DB_TYPE
++		var $query;				// name of query-method, dependant on DB_TYPE
++		var $fetch_array;		// name of fetch_array-method, dependant on DB_TYPE
++		var $free_result;		// name of free_result-method, dependant on DB_TYPE
++		var $escape_string;		// name of escape_string-method, dependant on DB_TYPE
++		var $select_db;			// name of select_db-method, dependant on DB_TYPE
++		var $error;				// name of error-method, depandant on DB_TYPE
++		var $fetch_object;		// name of fetch_object-method, dependant on DB_TYPE
++		
++		function __construct($table) {
++			if (!is_string(DB_TYPE) || strlen(DB_TYPE) == 0) throw new Exception('DB_TYPE has not been set!');
++			$this-&gt;connect = DB_TYPE.'_connect';
++			$this-&gt;close = DB_TYPE.'_close';
++			$this-&gt;query = DB_TYPE.'_query';
++			$this-&gt;fetch_array = DB_TYPE.'_fetch_array';
++			$this-&gt;free_result = DB_TYPE.'_free_result';
++			$this-&gt;escape_string = DB_TYPE.'_escape_string';
++			$this-&gt;select_db = DB_TYPE.'_select_db';
++			
++			$this-&gt;conn = $this-&gt;connect(DB_HOST.':'.DB_PORT, DB_USER, DB_PWD, false) || die(ERR_DB_CONNECT.':'. $this-&gt;error());
++			$this-&gt;select_db(DB_NAME, $this-&gt;conn) || die(ERR_DB_SELECT.':'. $this-&gt;error());
++			$this-&gt;table = $table;
++		}
++		
++		/**
++		 * This method fetches all entries from the table this &lt;code&gt;db&lt;/code&gt;-instance has been created with
++		 * 
++		 * @return an associative array &lt;code&gt;[line-number]['column-name'] =&gt; value&lt;/code&gt;
++		 */
++		/* public */
++		function getAll() {
++			$sql = 'SELECT * FROM `'. $this-&gt;table .'`;';
++			return $this-&gt;fetchArray($sql, DB_TYPE.'_ASSOC');
++		}
++		
++		/**
++		 * This method fetches the given columns of all entries from the table this &lt;code&gt;db&lt;/code&gt;-instance has been created with
++		 * 
++		 * @param array cols:  &lt;p&gt;An array holding the names of all columns to be returned.&lt;/p&gt;
++		 *                     &lt;p&gt;If an associative array is passed, the columns specified by it's keys will be mapped to the respective array-values.&lt;/p&gt;
++		 *                     &lt;p&gt;If &lt;code&gt;null&lt;/code&gt; is passed, all columns will be returned.&lt;/p&gt;
++		 * @param mixed where: &lt;p&gt;Optional argument specifying restrictions which rows shall be selected and returned.&lt;/p&gt;
++		 *                     &lt;p&gt;If an associative array is passed, the keys specify the value which has to equal their respective value in the array.
++		 *                        All items of the array are AND-combined.&lt;/p&gt;
++		 *                     &lt;p&gt;If a string is passed, it will be used as the complete &lt;code&gt;WHERE&lt;/code&gt;-part of the SQL-statement.&lt;/p&gt;
++		 *                     &lt;p&gt;If &lt;code&gt;null&lt;/null&gt; is passed, or the argument is not used at all, the selection won't be restricted.&lt;/p&gt;
++		 * @return             &lt;p&gt;an associative array &lt;code&gt;[line-number]['column-name'] =&gt; value&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;
++		 *                        if no row matching &lt;code&gt;cols&lt;/code&gt; or &lt;code&gt;where&lt;/code&gt; could be found.&lt;/p&gt;
++		 */
++		/* public */
++		function getAssoc($cols, $where = null) {
++			$sql = $this-&gt;assSelect($cols) .' FROM `'. $this-&gt;table .'` '. $this-&gt;assWhere($where) .';';
++			return $this-&gt;db-&gt;fetchArray($sql, DB_TYPE.'_ASSOC');
++		}
++		
++		/**
++		 * This method fetches the given columns of all entries from the table this &lt;code&gt;db&lt;/code&gt;-instance has been created with
++		 * 
++		 * @param array cols:  &lt;p&gt;An array holding the names of all columns to be returned.&lt;/p&gt;
++		 *                     &lt;p&gt;If an associative array is passed, the columns specified by it's keys will be mapped to the respective array-values.&lt;/p&gt;
++		 *                     &lt;p&gt;If &lt;code&gt;null&lt;/code&gt; is passed, all columns will be returned.&lt;/p&gt;
++		 * @param mixed where: &lt;p&gt;Optional argument specifying restrictions which rows shall be selected and returned.&lt;/p&gt;
++		 *                     &lt;p&gt;If an associative array is passed, the keys specify the value which has to equal their respective value in the array.
++		 *                        All items of the array are AND-combined.&lt;/p&gt;
++		 *                     &lt;p&gt;If a string is passed, it will be used as the complete &lt;code&gt;WHERE&lt;/code&gt;-part of the SQL-statement.&lt;/p&gt;
++		 *                     &lt;p&gt;If &lt;code&gt;null&lt;/null&gt; is passed, or the argument is not used at all, the selection won't be restricted.&lt;/p&gt;
++		 * @return             &lt;p&gt;an non-associative array &lt;code&gt;[line-number][column-number] =&gt; value&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;
++		 *                        if no row matching &lt;code&gt;cols&lt;/code&gt; or &lt;code&gt;where&lt;/code&gt; could be found.&lt;/p&gt;
++		 */
++		/* public */
++		function get($cols, $where = null) {
++			$sql = $this-&gt;assSelect($cols) .' FROM `'. $this-&gt;table .'` '. $this-&gt;assWhere($where) .';';
++			return $this-&gt;fetchArray($sql, DB_TYPE.'_NUM');
++		}
++		
++		/**
++		 * This method fetches an stdClass-object of the first line the given parameters match
++		 *
++		 * @param array cols:  &lt;p&gt;An array holding the names of all columns to be returned.&lt;/p&gt;
++		 *                     &lt;p&gt;If an associative array is passed, the columns specified by it's keys will be mapped to the respective array-values.&lt;/p&gt;
++		 *                     &lt;p&gt;If &lt;code&gt;null&lt;/code&gt; is passed, all columns will be returned.&lt;/p&gt;
++		 * @param mixed where: &lt;p&gt;Optional argument specifying restrictions which rows shall be selected and returned.&lt;/p&gt;
++		 *                     &lt;p&gt;If an associative array is passed, the keys specify the value which has to equal their respective value in the array.
++		 *                        All items of the array are AND-combined.&lt;/p&gt;
++		 *                     &lt;p&gt;If a string is passed, it will be used as the complete &lt;code&gt;WHERE&lt;/code&gt;-part of the SQL-statement.&lt;/p&gt;
++		 *                     &lt;p&gt;If &lt;code&gt;null&lt;/null&gt; is passed, or the argument is not used at all, the selection won't be restricted.&lt;/p&gt;
++		 * @return             &lt;p&gt;an &lt;code&gt;stdClass&lt;/code&gt;-object containing the values of all selected columns as public variables or &lt;code&gt;false&lt;/code&gt;
++		 *                        if no row matching &lt;code&gt;cols&lt;/code&gt; or &lt;code&gt;where&lt;/code&gt; could be found.&lt;/p&gt;
++		 * @throws Exception   if either &lt;code&gt;cols&lt;/code&gt; or &lt;/code&gt;where&lt;/where&gt; is not usable.
++		 */
++		/* public */
++		function getSingle($cols, $where) {
++			if ($col == null || !is_string($col)) throw new Exception('Illegal Argument: $col: '. $col);
++			if ($where == null || strlen($w = self::assWhere($where)) == 0) throw new Exception('Illegal Argument: $where: '. $where);
++			$sql = self::assSelect($cols) .' FROM `'. $this-&gt;table .&quot;` $w;&quot;;
++			$res = $this-&gt;query($sql, $this-&gt;conn) || die(ERR_DB_QUERY.':'. $this-&gt;error());
++			$r = $this-&gt;fetch_object($res);
++			$this-&gt;free_result($res);
++			return $r;
++		}
++		
++		/* private */
++		function fetchArray($sql, $flags) {
++			if ($sql == null || !is_string($sql)) return null;
++			$res = $this-&gt;query($sql, $this-&gt;conn) || die(ERR_DB_QUERY.':'. $this-&gt;error());
++			$r = array();
++			while ($row = $fetch_array($res, $flags)) {
++				$r[] = $row;
++			}
++			$free_result($res);
++			return $r;
++		}
++		
++		/* private */
++		function assSelect($cols) {
++			$sql = 'SELECT ';
++			if (is_array($cols)) {
++				foreach ($cols as $col =&gt; $colname) {
++					if (!is_integer($col)) $sql .= '`'. $this-&gt;escape_string($col) .'` AS ';
++					$sql .= $this-&gt;escape_string($colname) .',';
++				}
++				$sql = substr($sql, 0, -1);
++			} else {
++				$sql .= '*';
++			}
++			return $sql;
++		}
++		
++		/* private */
++		function assWhere($where) {
++			$sql = '';
++			if (is_array($where)) {
++				$sql .= 'WHERE ';
++				foreach ($where as $key =&gt; $expr) {
++					$sql .= '\''. $this-&gt;escape_string($key) .'\' = `'. $this-&gt;escape_string($expr) .'` AND ';
++				}
++				$sql = substr($sql, 0, -5);
++			} else if (is_string($where)) {
++				$sql .= 'WHERE '. $this-&gt;escape_string($where);
++			}
++			return $sql;
++		}
++		
++		function __destruct() {
++			$this-&gt;close($this-&gt;conn);
++		}
++	}
++	
+ ?&gt;
+\ No newline at end of file
+
+Added: classes/db/errors.php
+===================================================================
+--- classes/db/errors.php	2007-03-04 21:02:36 UTC (rev 1)
++++ classes/db/errors.php	2007-03-06 15:21:54 UTC (rev 2)
+@@ -0,0 +1,7 @@
++&lt;?php
++	
++	define(ERR_DB_CONNECT, 'Could not establish connection');
++	define(ERR_DB_SELECT,  'Database could not be selected');
++	define(ERR_DB_QUERY,   'Query could not be executed');
++	
++?&gt;
+\ No newline at end of file
+
+Modified: classes/server/settings.php
+===================================================================
+--- classes/server/settings.php	2007-03-04 21:02:36 UTC (rev 1)
++++ classes/server/settings.php	2007-03-06 15:21:54 UTC (rev 2)
+@@ -1,10 +1,21 @@
+ &lt;?php
+ 	
+-	declare(MYHASH = 'pinytesthash')
+-	declare(SEEDDB = 'piny_seeddb');
++	define(MYHASH, 'pinytesthash');
++	define(SEEDDB, 'piny_seeddb');
+ 	
+-	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/');
++	define(DB_MYSQL, 'mysql');
++	define(DB_PGSQL, 'pgsql');
++	define(DB_MYQSLI, 'mysqli');
+ 	
++	define(DB_TYPE, DB_MYSQL);
++	define(DB_HOST, 'localhost');
++	define(DB_PORT, '3306');
++	define(DB_USER, 'root');
++	define(DB_PWD, '');
++	define(DB_NAME, 'piny');
++	
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
++	
+ 	function settingsGetVersion() {
+ 	}
+ 	
+@@ -12,7 +23,7 @@
+ 	}
+ 	
+ 	function settingsCheckInput($post) {
+-		return $post;
++		return strip_tags($post);
+ 	}
+ 	
+ ?&gt;
+\ No newline at end of file
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000001.html">[Piny-svn] r3 - / classes/db classes/seed classes/yacy sql yacy
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#0">[ date ]</a>
+              <a href="thread.html#0">[ thread ]</a>
+              <a href="subject.html#0">[ subject ]</a>
+              <a href="author.html#0">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/piny-svn">More information about the Piny-svn
+mailing list</a><br>
+</body></html>

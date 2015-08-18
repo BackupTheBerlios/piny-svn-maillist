@@ -1,0 +1,534 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [Piny-svn] r4 - classes/db classes/seed classes/server classes/yacy	sql yacy
+   </TITLE>
+   <LINK REL="Index" HREF="http://lists.berlios.de/pipermail/piny-svn/2007-March/index.html" >
+   <LINK REL="made" HREF="mailto:piny-svn%40lists.berlios.de?Subject=Re%3A%20%5BPiny-svn%5D%20r4%20-%20classes/db%20classes/seed%20classes/server%20classes/yacy%0A%09sql%20yacy&In-Reply-To=%3C200703062140.l26LeFiD009109%40sheep.berlios.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000001.html">
+   <LINK REL="Next"  HREF="000003.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[Piny-svn] r4 - classes/db classes/seed classes/server classes/yacy	sql yacy</H1>
+    <B>karlchenofhell at BerliOS</B> 
+    <A HREF="mailto:piny-svn%40lists.berlios.de?Subject=Re%3A%20%5BPiny-svn%5D%20r4%20-%20classes/db%20classes/seed%20classes/server%20classes/yacy%0A%09sql%20yacy&In-Reply-To=%3C200703062140.l26LeFiD009109%40sheep.berlios.de%3E"
+       TITLE="[Piny-svn] r4 - classes/db classes/seed classes/server classes/yacy	sql yacy">karlchenofhell at mail.berlios.de
+       </A><BR>
+    <I>Tue Mar  6 22:40:15 CET 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000001.html">[Piny-svn] r3 - / classes/db classes/seed classes/yacy sql yacy
+</A></li>
+        <LI>Next message: <A HREF="000003.html">[Piny-svn] r5 - classes/db classes/seed classes/server classes/yacy	sql yacy
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#2">[ date ]</a>
+              <a href="thread.html#2">[ thread ]</a>
+              <a href="subject.html#2">[ subject ]</a>
+              <a href="author.html#2">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Author: karlchenofhell
+Date: 2007-03-06 22:40:14 +0100 (Tue, 06 Mar 2007)
+New Revision: 4
+
+Added:
+   classes/yacy/errors.php
+   yacy/errors.php
+Modified:
+   classes/db/db.php
+   classes/seed/seeddb.php
+   classes/server/settings.php
+   classes/yacy/client.php
+   classes/yacy/core.php
+   sql/seeddb.sql
+   yacy/hello.php
+Log:
+- fixed many bugs in db
+- some fixes because of wrong local php-version (was 5)
+- hello should be working now
+
+Modified: classes/db/db.php
+===================================================================
+--- classes/db/db.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/db/db.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,34 +1,21 @@
+ &lt;?php
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+ 	
+-	include_once('../server/settings.php');
++	include_once('server/settings.php');
+ 	include_once('db/errors.php');
+ 	
+ 	class db {
+ 		var $conn;				// connection resource
+ 		var $table;				// name of the table
+ 		
+-		var $connect;			// name of connect-method, dependant on DB_TYPE
+-		var $close;				// name of close-method, dependant on DB_TYPE
+-		var $query;				// name of query-method, dependant on DB_TYPE
+-		var $fetch_array;		// name of fetch_array-method, dependant on DB_TYPE
+-		var $free_result;		// name of free_result-method, dependant on DB_TYPE
+-		var $escape_string;		// name of escape_string-method, dependant on DB_TYPE
+-		var $select_db;			// name of select_db-method, dependant on DB_TYPE
+-		var $error;				// name of error-method, depandant on DB_TYPE
+-		var $fetch_object;		// name of fetch_object-method, dependant on DB_TYPE
+-		
+-		function __construct($table) {
+-			if (!is_string(DB_TYPE) || strlen(DB_TYPE) == 0) throw new Exception('DB_TYPE has not been set!');
+-			$this-&gt;connect = DB_TYPE.'_connect';
+-			$this-&gt;close = DB_TYPE.'_close';
+-			$this-&gt;query = DB_TYPE.'_query';
+-			$this-&gt;fetch_array = DB_TYPE.'_fetch_array';
+-			$this-&gt;free_result = DB_TYPE.'_free_result';
+-			$this-&gt;escape_string = DB_TYPE.'_escape_string';
+-			$this-&gt;select_db = DB_TYPE.'_select_db';
++		function db($table) {
++			if (!is_string(DB_TYPE) || strlen(DB_TYPE) == 0) die('DB_TYPE has not been set!');
++			$connect = DB_TYPE.'_connect';
++			$select_db = DB_TYPE.'_select_db';
++			$error = DB_TYPE.'_error';
+ 			
+-			$this-&gt;conn = $this-&gt;connect(DB_HOST.':'.DB_PORT, DB_USER, DB_PWD, false) || die(ERR_DB_CONNECT.':'. $this-&gt;error());
+-			$this-&gt;select_db(DB_NAME, $this-&gt;conn) || die(ERR_DB_SELECT.':'. $this-&gt;error());
++			$this-&gt;conn = $connect(DB_HOST.':'.DB_PORT, DB_USER, DB_PWD, false) or die(ERR_DB_CONNECT.':'. $error());
++			$select_db(DB_NAME, $this-&gt;conn) or die(ERR_DB_SELECT.':'. $error());
+ 			$this-&gt;table = $table;
+ 		}
+ 		
+@@ -40,7 +27,7 @@
+ 		/* public */
+ 		function getAll($colarrkey = null) {
+ 			$sql = 'SELECT * FROM `'. $this-&gt;table .'`;';
+-			return $this-&gt;fetchArray($sql, DB_TYPE.'_ASSOC', $colarrkey);
++			return $this-&gt;fetchArray($sql, constant(strtoupper(DB_TYPE).'_ASSOC'), $colarrkey);
+ 		}
+ 		
+ 		/**
+@@ -60,7 +47,7 @@
+ 		/* public */
+ 		function getAssoc($cols, $where = null, $colarrkey = null) {
+ 			$sql = $this-&gt;assSelect($cols) .' FROM `'. $this-&gt;table .'` '. $this-&gt;assWhere($where) .';';
+-			return $this-&gt;db-&gt;fetchArray($sql, DB_TYPE.'_ASSOC', $colarrkey = null);
++			return $this-&gt;fetchArray($sql, constant(strtoupper(DB_TYPE).'_ASSOC'), $colarrkey = null);
+ 		}
+ 		
+ 		/**
+@@ -80,7 +67,7 @@
+ 		/* public */
+ 		function get($cols, $where = null, $colarrkey = null) {
+ 			$sql = $this-&gt;assSelect($cols) .' FROM `'. $this-&gt;table .'` '. $this-&gt;assWhere($where) .';';
+-			return $this-&gt;fetchArray($sql, DB_TYPE.'_NUM', $colarrkey);
++			return $this-&gt;fetchArray($sql, constant(strtoupper(DB_TYPE).'_NUM'), $colarrkey);
+ 		}
+ 		
+ 		/**
+@@ -100,12 +87,14 @@
+ 		 */
+ 		/* public */
+ 		function getSingle($cols, $where) {
+-			if ($col == null || !is_string($col)) throw new Exception('Illegal Argument: $col: '. $col);
+-			if ($where == null || strlen($w = self::assWhere($where)) == 0) throw new Exception('Illegal Argument: $where: '. $where);
++			if ($col == null || !is_string($col)) die('Illegal Argument: $col: '. $col);
++			if ($where == null || strlen($w = self::assWhere($where)) == 0) die('Illegal Argument: $where: '. $where);
+ 			$sql = self::assSelect($cols) .' FROM `'. $this-&gt;table .&quot;` $w;&quot;;
+-			$res = $this-&gt;query($sql, $this-&gt;conn) || die(ERR_DB_QUERY.':'. $this-&gt;error());
++			$query = DB_TYPE.'_query';
++			$res = $query($sql, $this-&gt;conn) or die(ERR_DB_QUERY.':'. $this-&gt;error());
+ 			$r = $this-&gt;fetch_object($res);
+-			$this-&gt;free_result($res);
++			$free_result = DB_TYPE.'_free_result';
++			$free_result($res);
+ 			return $r;
+ 		}
+ 		
+@@ -120,13 +109,14 @@
+ 					if (is_string($value)) {
+ 						$sql .= &quot;'$value',&quot;;
+ 					} else {
+-						$sql .= &quot;$value,&quot;:
++						$sql .= &quot;$value,&quot;;
+ 					}
+ 				}
+ 				$sql = substr($sql, 0, -1) .'), (';
+ 			}
+ 			$sql = substr($sql, 0, -2);
+-			return $this-&gt;query($sql, $this-&gt;conn);
++			$query = DB_TYPE.'_query';
++			return $query($sql, $this-&gt;conn);
+ 		}
+ 		
+ 		/* public */
+@@ -140,11 +130,13 @@
+ 				if (is_string($value)) {
+ 					$sql .= &quot;'$value',&quot;;
+ 				} else {
+-					$sql .= &quot;$value,&quot;:
++					$sql .= &quot;$value,&quot;;
+ 				}
+ 			}
+ 			$sql = substr($sql, 0, -1) .';';
+-			return $this-&gt;query($sql, $this-&gt;conn) || die(ERR_DB_QUERY.':'. $this-&gt;error());
++			$query = DB_TYPE.'_query';
++			$error = DB_TYPE.'_error';
++			return $query($sql, $this-&gt;conn) or die(ERR_DB_QUERY.':'. $error());
+ 		}
+ 		
+ 		/* public */
+@@ -160,8 +152,11 @@
+ 		/* private */
+ 		function fetchArray($sql, $flags, $colarrkey = null) {
+ 			if ($sql == null || !is_string($sql)) return null;
+-			$res = $this-&gt;query($sql, $this-&gt;conn) || die(ERR_DB_QUERY.':'. $this-&gt;error());
++			$query = DB_TYPE.'_query';
++			$error = DB_TYPE.'_error';
++			$res = $query($sql, $this-&gt;conn) or die(ERR_DB_QUERY.':'. $error());
+ 			$r = array();
++			$fetch_array = DB_TYPE.'_fetch_array';
+ 			while ($row = $fetch_array($res, $flags)) {
+ 				if ($colarrkey == null) {
+ 					$r[] = $row;
+@@ -169,6 +164,7 @@
+ 					$r[$row[$colarrkey]] = $row;
+ 				}
+ 			}
++			$free_result = DB_TYPE.'_free_result';
+ 			$free_result($res);
+ 			return $r;
+ 		}
+@@ -176,12 +172,13 @@
+ 		/* private */
+ 		function assSelect($cols) {
+ 			$sql = 'SELECT ';
++			$escape_string = DB_TYPE.'_escape_string';
+ 			if (is_array($cols)) {
+ 				foreach ($cols as $col =&gt; $colname) {
+-					if (!is_integer($col)) $sql .= '`'. $this-&gt;escape_string($col) .'` AS ';
+-					$sql .= $this-&gt;escape_string($colname) .',';
++					if (!is_integer($col)) $sql .= '`'. $escape_string($col) .'` AS ';
++					$sql .= $escape_string($colname) .', ';
+ 				}
+-				$sql = substr($sql, 0, -1);
++				$sql = substr($sql, 0, -2);
+ 			} else {
+ 				$sql .= '*';
+ 			}
+@@ -191,20 +188,22 @@
+ 		/* private */
+ 		function assWhere($where) {
+ 			$sql = '';
++			$escape_string = DB_TYPE.'_escape_string';
+ 			if (is_array($where)) {
+ 				$sql .= 'WHERE ';
+ 				foreach ($where as $key =&gt; $expr) {
+-					$sql .= '\''. $this-&gt;escape_string($key) .'\' = `'. $this-&gt;escape_string($expr) .'` AND ';
++					$sql .= '`'. $escape_string($key) .'` = \''. $escape_string($expr) .'\' AND ';
+ 				}
+ 				$sql = substr($sql, 0, -5);
+ 			} else if (is_string($where)) {
+-				$sql .= 'WHERE '. $this-&gt;escape_string($where);
++				$sql .= 'WHERE '. $escape_string($where);
+ 			}
+ 			return $sql;
+ 		}
+ 		
+ 		function __destruct() {
+-			$this-&gt;close($this-&gt;conn);
++			$close = DB_TYPE.'_close';
++			$close($this-&gt;conn);
+ 		}
+ 	}
+ 	
+
+Modified: classes/seed/seeddb.php
+===================================================================
+--- classes/seed/seeddb.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/seed/seeddb.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,6 +1,7 @@
+-&lt;?
++&lt;?php
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+ 	
+-	include_once('../server/settings.php');
++	include_once('server/settings.php');
+ 	require_once('db/db.php');
+ 	
+ 	function splitArray($array, $char) {
+@@ -23,7 +24,7 @@
+         
+         function peer($seed) {
+         	if (is_string($seed)) {
+-        		$this-&gt;seed = self::getArrayFromSeed($seed);
++        		$this-&gt;seed = peer::getArrayFromSeed($seed);
+ 			} else if (is_array($seed)) {
+ 				$this-&gt;seed = $seed;
+ 			}
+@@ -58,7 +59,42 @@
+         function getNCount()       { return $this-&gt;seed['NCount']; }
+         function getFlags()        { return $this-&gt;seed['Flags']; }
+         
++        function setHash($value)         { $this-&gt;seed['Hash'] = $value; }
++        function setIPType($value)       { $this-&gt;seed['IPType'] = $value; }
++        function setTags($value)         { $this-&gt;seed['Tags'] = $value; }
++        function setPort($value)         { $this-&gt;seed['Port'] = $value; }
++        function setIP($value)           { $this-&gt;seed['IP'] = $value; }
++        function setRI($value)           { $this-&gt;seed['rI'] = $value; }
++        function setUptime($value)       { $this-&gt;seed['Uptime'] = $value; }
++        function setVersion($value)      { $this-&gt;seed['Version'] = $value; }
++        function setUTC($value)          { $this-&gt;seed['UTC'] = $value; }
++        function setPeerType($value)     { $this-&gt;seed['PeerType'] = $value; }
++        function setSI($value)           { $this-&gt;seed['sI'] = $value; }
++        function setLastSeen($value)     { $this-&gt;seed['LastSeen'] = $value; }
++        function setName($value)         { $this-&gt;seed['Name'] = $value; }
++        function setCCount($value)       { $this-&gt;seed['CCount'] = $value; }
++        function setSCount($value)       { $this-&gt;seed['SCount'] = $value; }
++        function setNews($value)         { $this-&gt;seed['news'] = $value; }
++        function setUSpeed($value)       { $this-&gt;seed['USpeed'] = $value; }
++        function setCRTCount($value)     { $this-&gt;seed['CRTCnt'] = $value; }
++        function setCRWCount($value)     { $this-&gt;seed['CRWCnt'] = $value; }
++        function setBirthDate($value)    { $this-&gt;seed['BDate'] = $value; }
++        function setLinks($value)        { $this-&gt;seed['LCount'] = $value; }
++        function setRU($value)           { $this-&gt;seed['rU'] = $value; }
++        function setWords($value)        { $this-&gt;seed['ICount'] = $value; }
++        function setSU($value)           { $this-&gt;seed['sU'] = $value; }
++        function setISpeed($value)       { $this-&gt;seed['ISpeed'] = $value; }
++        function setRSpeed($value)       { $this-&gt;seed['RSpeed'] = $value; }
++        function setNCount($value)       { $this-&gt;seed['NCount'] = $value; }
++        function setFlags($value)        { $this-&gt;seed['Flags'] = $value; }
++        
++        function getVersionDbl() {
++        	$version = $this-&gt;getVersion();
++        	return (double)$version;
++        }
++        
+         function getAddress() {
++        	echo var_dump($this-&gt;seed);
+         	return $this-&gt;getIP() .':'. $this-&gt;getPort();
+         }
+         
+@@ -77,7 +113,12 @@
+ 				default: $plainlist = substr($seed, 2); break;
+ 			}
+ 			$plainlist = substr($plainlist, 1, -1);        // kill '{' on beginning and '}' at the end
+-			return splitArray(explode(',', $plainlist), '=');
++			$arr = splitArray(explode(',', $plainlist), '=');
++			$r = array();
++			foreach ($arr as $key =&gt; $val) {
++				$r[trim($key)] = trim($val);
++			}
++			return $r;
+ 		}
+     }
+     
+@@ -118,8 +159,8 @@
+     			),
+     			array('Hash' =&gt; MYHASH)
+     	);
+-    	if ($arr === false) throw new Exception('MYHASH could not be found in seed-db');
+-    	return new seed($arr[0]);
++    	if ($arr === false || count($arr) == 0) die('MYHASH could not be found in seed-db');
++    	return new peer($arr[0]);
+     }
+ 	
+ 	function updatePeer($hash, $version, $uptime, $type) {
+@@ -129,10 +170,10 @@
+ 	
+ 	function updateFromSeeds($seeds) {
+ 		$db = new db(SEEDDB);
+-		$i = 0;
++		$arr = array();
+ 		foreach ($seeds as $seed) {
+-			if ($db-&gt;putSingle(peer::getArrayFromSeed($seed))) $i++;
++			$arr[] = peer::getArrayFromSeed($seed);
+ 		}
+-		return $i;
++		return $db-&gt;put($arr);
+ 	}
+ ?&gt;
+\ No newline at end of file
+
+Modified: classes/server/settings.php
+===================================================================
+--- classes/server/settings.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/server/settings.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -4,14 +4,14 @@
+ 	define(SEEDDB, 'piny_seeddb');
+ 	
+ 	define(DB_MYSQL, 'mysql');
+-	define(DB_PGSQL, 'pgsql');
++	define(DB_PGSQL, 'pg');
+ 	define(DB_MYQSLI, 'mysqli');
+ 	
+ 	define(DB_TYPE, DB_MYSQL);
+ 	define(DB_HOST, 'localhost');
+ 	define(DB_PORT, '3306');
+ 	define(DB_USER, 'root');
+-	define(DB_PWD, '');
++	define(DB_PWD, 'esC4p3n0w');
+ 	define(DB_NAME, 'piny');
+ 	
+ 	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+@@ -23,7 +23,10 @@
+ 	}
+ 	
+ 	function settingsCheckInput($post) {
+-		return strip_tags($post);
++		foreach ($post as $key =&gt; $value) {
++			$post[$key] = strip_tags($value);
++		}
++		return $post;
+ 	}
+ 	
+ ?&gt;
+\ No newline at end of file
+
+Modified: classes/yacy/client.php
+===================================================================
+--- classes/yacy/client.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/yacy/client.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,10 +1,14 @@
+ &lt;?php
+ 	
+-	require_once('classes/seed/seeddb.php');
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+ 	
++	include_once('server/settings.php');
++	require_once('seed/seeddb.php');
++	
+ 	function clientQueryURLCount($peer) {
++		$mypeer = seeddbGetMyPeer();
+ 		$request = '<A HREF="http://">http://</A>'. $peer-&gt;getAddress() .'/query.html'
+-				.'?iam='. seeddbGetMyPeer()-&gt;getHash()
++				.'?iam='. $mypeer-&gt;getHash()
+ 				.'&amp;youare='. $peer-&gt;getHash()
+ 				.'&amp;key='
+ 				.'&amp;object=lurlcount'
+
+Modified: classes/yacy/core.php
+===================================================================
+--- classes/yacy/core.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/yacy/core.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,6 +1,8 @@
+ &lt;?php
+ 	
+-	include_once('../server/settings.php');
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
++	
++	include_once('server/settings.php');
+ 	include_once('yacy/errors.php');
+ 	require_once('db/db.php');
+ 	require_once('seed/seeddb.php');
+@@ -12,13 +14,8 @@
+ 		$host = '<A HREF="http://">http://</A>'. $peer-&gt;getAddress() .'/yacy/hello.html';
+ 		$args = &quot;key=$key&amp;seed=&quot;.MYHASH.&quot;&amp;count=20&quot;;
+ 		$hello = explode(&quot;\n&quot;, file_get_contents(&quot;$host?$args&quot;));
+-		echo 'corePeerPing '. $peer-&gt;getHash() .':';
+-		echo updatePeer(
+-				$peer-&gt;getHash(),
+-				explode('=', $hello[0])[1],
+-				explode('=', $hello[1])[1],
+-				explode('=', $hello[4])[1]
+-		) . chr(10);
++		$arr = splitArray(array_slice($hello, 0, 4));
++		updatePeer($peer-&gt;getHash(), $arr['myversion'], $arr['uptime'], $arr['mytype']);
+ 		updateFromSeeds(array_slice($hello, 5));
+ 	}
+ 	
+
+Added: classes/yacy/errors.php
+===================================================================
+--- classes/yacy/errors.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/yacy/errors.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -0,0 +1,3 @@
++&lt;?php
++
++?&gt;
+\ No newline at end of file
+
+Modified: sql/seeddb.sql
+===================================================================
+--- sql/seeddb.sql	2007-03-06 19:42:42 UTC (rev 3)
++++ sql/seeddb.sql	2007-03-06 21:40:14 UTC (rev 4)
+@@ -16,10 +16,10 @@
+ 	`Uptime` timestamp,			-- the peer's uptime
+ 	`Version` double(14,12),	-- the peer's yacy-version, i.e. v13.5230123443
+ 	`LastSeen` timestamp,		-- time this peer was last pinged
+-	`Name` varchar(40),			-- the peer's name
++	`name` varchar(40),			-- the peer's name
+ 	`CCount` float(5),			-- connects per hour, i.e. 0.48
+ 	`SCount` smallint UNSIGNED,	-- number of seeds, this peer has stored
+-	`news` varchar(255)			-- any news this peer knows about
++	`news` varchar(255),			-- any news this peer knows about
+ 	`USpeed` smallint UNSIGNED,	-- computed uplink speed of this peer
+ 	`CRTCnt` smallint UNSIGNED,	-- number of files: citation rank other
+ 	`CRWCnt` smallint UNSIGNED,	-- number of files: citation rank own
+
+Added: yacy/errors.php
+===================================================================
+--- yacy/errors.php	2007-03-06 19:42:42 UTC (rev 3)
++++ yacy/errors.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -0,0 +1,5 @@
++&lt;?php
++	
++	define(ERR_YACY_HELLO_NO_KEY, 'Hello without key');
++	
++?&gt;
+\ No newline at end of file
+
+Modified: yacy/hello.php
+===================================================================
+--- yacy/hello.php	2007-03-06 19:42:42 UTC (rev 3)
++++ yacy/hello.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,7 +1,9 @@
+ &lt;?php
+ 	
+-	include_once('../classes/server/settings.php');
+-	include_once('errors.php');
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
++	
++	include_once('server/settings.php');
++	include_once('./errors.php');
+ 	require_once('seed/seeddb.php');
+ 	require_once('yacy/client.php');
+ 	require_once('yacy/version.php');
+@@ -16,7 +18,7 @@
+ 		$count = $post['count'];
+ 		
+ 		$db = new db(OPENHELLOS);
+-		if (!$sb-&gt;removeSingle(array('Hash' =&gt; $peer-getHash()))) die(ERR_YACY_HELLO_NO_KEY.': '. $peer-&gt;getHash());
++		if (!$db-&gt;removeSingle(array('Hash' =&gt; $peer-&gt;getHash()))) ;//die(ERR_YACY_HELLO_NO_KEY.': '. $peer-&gt;getHash());
+ 		
+ 		$myversion = settingsGetVersion();
+ 		$uptime = settingsGetUptime();
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000001.html">[Piny-svn] r3 - / classes/db classes/seed classes/yacy sql yacy
+</A></li>
+	<LI>Next message: <A HREF="000003.html">[Piny-svn] r5 - classes/db classes/seed classes/server classes/yacy	sql yacy
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#2">[ date ]</a>
+              <a href="thread.html#2">[ thread ]</a>
+              <a href="subject.html#2">[ subject ]</a>
+              <a href="author.html#2">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="https://lists.berlios.de/mailman/listinfo/piny-svn">More information about the Piny-svn
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,1365 @@
+From karlchenofhell at mail.berlios.de  Tue Mar  6 16:21:56 2007
+From: karlchenofhell at mail.berlios.de (karlchenofhell at BerliOS)
+Date: Tue, 6 Mar 2007 16:21:56 +0100
+Subject: [Piny-svn] r2 - in classes: db server
+Message-ID: <200703061521.l26FLu5e023613@sheep.berlios.de>
+
+Author: karlchenofhell
+Date: 2007-03-06 16:21:54 +0100 (Tue, 06 Mar 2007)
+New Revision: 2
+
+Added:
+   classes/db/errors.php
+Modified:
+   classes/db/db.php
+   classes/server/settings.php
+Log:
+- added db-class
+
+Modified: classes/db/db.php
+===================================================================
+--- classes/db/db.php	2007-03-04 21:02:36 UTC (rev 1)
++++ classes/db/db.php	2007-03-06 15:21:54 UTC (rev 2)
+@@ -1,3 +1,159 @@
+ <?php
+-
++	
++	include_once('../server/settings.php');
++	include_once('db/errors.php');
++	
++	class db {
++		var $conn;				// connection resource
++		var $table;				// name of the table
++		
++		var $connect;			// name of connect-method, dependant on DB_TYPE
++		var $close;				// name of close-method, dependant on DB_TYPE
++		var $query;				// name of query-method, dependant on DB_TYPE
++		var $fetch_array;		// name of fetch_array-method, dependant on DB_TYPE
++		var $free_result;		// name of free_result-method, dependant on DB_TYPE
++		var $escape_string;		// name of escape_string-method, dependant on DB_TYPE
++		var $select_db;			// name of select_db-method, dependant on DB_TYPE
++		var $error;				// name of error-method, depandant on DB_TYPE
++		var $fetch_object;		// name of fetch_object-method, dependant on DB_TYPE
++		
++		function __construct($table) {
++			if (!is_string(DB_TYPE) || strlen(DB_TYPE) == 0) throw new Exception('DB_TYPE has not been set!');
++			$this->connect = DB_TYPE.'_connect';
++			$this->close = DB_TYPE.'_close';
++			$this->query = DB_TYPE.'_query';
++			$this->fetch_array = DB_TYPE.'_fetch_array';
++			$this->free_result = DB_TYPE.'_free_result';
++			$this->escape_string = DB_TYPE.'_escape_string';
++			$this->select_db = DB_TYPE.'_select_db';
++			
++			$this->conn = $this->connect(DB_HOST.':'.DB_PORT, DB_USER, DB_PWD, false) || die(ERR_DB_CONNECT.':'. $this->error());
++			$this->select_db(DB_NAME, $this->conn) || die(ERR_DB_SELECT.':'. $this->error());
++			$this->table = $table;
++		}
++		
++		/**
++		 * This method fetches all entries from the table this <code>db</code>-instance has been created with
++		 * 
++		 * @return an associative array <code>[line-number]['column-name'] => value</code>
++		 */
++		/* public */
++		function getAll() {
++			$sql = 'SELECT * FROM `'. $this->table .'`;';
++			return $this->fetchArray($sql, DB_TYPE.'_ASSOC');
++		}
++		
++		/**
++		 * This method fetches the given columns of all entries from the table this <code>db</code>-instance has been created with
++		 * 
++		 * @param array cols:  <p>An array holding the names of all columns to be returned.</p>
++		 *                     <p>If an associative array is passed, the columns specified by it's keys will be mapped to the respective array-values.</p>
++		 *                     <p>If <code>null</code> is passed, all columns will be returned.</p>
++		 * @param mixed where: <p>Optional argument specifying restrictions which rows shall be selected and returned.</p>
++		 *                     <p>If an associative array is passed, the keys specify the value which has to equal their respective value in the array.
++		 *                        All items of the array are AND-combined.</p>
++		 *                     <p>If a string is passed, it will be used as the complete <code>WHERE</code>-part of the SQL-statement.</p>
++		 *                     <p>If <code>null</null> is passed, or the argument is not used at all, the selection won't be restricted.</p>
++		 * @return             <p>an associative array <code>[line-number]['column-name'] => value</code> or <code>false</code>
++		 *                        if no row matching <code>cols</code> or <code>where</code> could be found.</p>
++		 */
++		/* public */
++		function getAssoc($cols, $where = null) {
++			$sql = $this->assSelect($cols) .' FROM `'. $this->table .'` '. $this->assWhere($where) .';';
++			return $this->db->fetchArray($sql, DB_TYPE.'_ASSOC');
++		}
++		
++		/**
++		 * This method fetches the given columns of all entries from the table this <code>db</code>-instance has been created with
++		 * 
++		 * @param array cols:  <p>An array holding the names of all columns to be returned.</p>
++		 *                     <p>If an associative array is passed, the columns specified by it's keys will be mapped to the respective array-values.</p>
++		 *                     <p>If <code>null</code> is passed, all columns will be returned.</p>
++		 * @param mixed where: <p>Optional argument specifying restrictions which rows shall be selected and returned.</p>
++		 *                     <p>If an associative array is passed, the keys specify the value which has to equal their respective value in the array.
++		 *                        All items of the array are AND-combined.</p>
++		 *                     <p>If a string is passed, it will be used as the complete <code>WHERE</code>-part of the SQL-statement.</p>
++		 *                     <p>If <code>null</null> is passed, or the argument is not used at all, the selection won't be restricted.</p>
++		 * @return             <p>an non-associative array <code>[line-number][column-number] => value</code> or <code>false</code>
++		 *                        if no row matching <code>cols</code> or <code>where</code> could be found.</p>
++		 */
++		/* public */
++		function get($cols, $where = null) {
++			$sql = $this->assSelect($cols) .' FROM `'. $this->table .'` '. $this->assWhere($where) .';';
++			return $this->fetchArray($sql, DB_TYPE.'_NUM');
++		}
++		
++		/**
++		 * This method fetches an stdClass-object of the first line the given parameters match
++		 *
++		 * @param array cols:  <p>An array holding the names of all columns to be returned.</p>
++		 *                     <p>If an associative array is passed, the columns specified by it's keys will be mapped to the respective array-values.</p>
++		 *                     <p>If <code>null</code> is passed, all columns will be returned.</p>
++		 * @param mixed where: <p>Optional argument specifying restrictions which rows shall be selected and returned.</p>
++		 *                     <p>If an associative array is passed, the keys specify the value which has to equal their respective value in the array.
++		 *                        All items of the array are AND-combined.</p>
++		 *                     <p>If a string is passed, it will be used as the complete <code>WHERE</code>-part of the SQL-statement.</p>
++		 *                     <p>If <code>null</null> is passed, or the argument is not used at all, the selection won't be restricted.</p>
++		 * @return             <p>an <code>stdClass</code>-object containing the values of all selected columns as public variables or <code>false</code>
++		 *                        if no row matching <code>cols</code> or <code>where</code> could be found.</p>
++		 * @throws Exception   if either <code>cols</code> or </code>where</where> is not usable.
++		 */
++		/* public */
++		function getSingle($cols, $where) {
++			if ($col == null || !is_string($col)) throw new Exception('Illegal Argument: $col: '. $col);
++			if ($where == null || strlen($w = self::assWhere($where)) == 0) throw new Exception('Illegal Argument: $where: '. $where);
++			$sql = self::assSelect($cols) .' FROM `'. $this->table ."` $w;";
++			$res = $this->query($sql, $this->conn) || die(ERR_DB_QUERY.':'. $this->error());
++			$r = $this->fetch_object($res);
++			$this->free_result($res);
++			return $r;
++		}
++		
++		/* private */
++		function fetchArray($sql, $flags) {
++			if ($sql == null || !is_string($sql)) return null;
++			$res = $this->query($sql, $this->conn) || die(ERR_DB_QUERY.':'. $this->error());
++			$r = array();
++			while ($row = $fetch_array($res, $flags)) {
++				$r[] = $row;
++			}
++			$free_result($res);
++			return $r;
++		}
++		
++		/* private */
++		function assSelect($cols) {
++			$sql = 'SELECT ';
++			if (is_array($cols)) {
++				foreach ($cols as $col => $colname) {
++					if (!is_integer($col)) $sql .= '`'. $this->escape_string($col) .'` AS ';
++					$sql .= $this->escape_string($colname) .',';
++				}
++				$sql = substr($sql, 0, -1);
++			} else {
++				$sql .= '*';
++			}
++			return $sql;
++		}
++		
++		/* private */
++		function assWhere($where) {
++			$sql = '';
++			if (is_array($where)) {
++				$sql .= 'WHERE ';
++				foreach ($where as $key => $expr) {
++					$sql .= '\''. $this->escape_string($key) .'\' = `'. $this->escape_string($expr) .'` AND ';
++				}
++				$sql = substr($sql, 0, -5);
++			} else if (is_string($where)) {
++				$sql .= 'WHERE '. $this->escape_string($where);
++			}
++			return $sql;
++		}
++		
++		function __destruct() {
++			$this->close($this->conn);
++		}
++	}
++	
+ ?>
+\ No newline at end of file
+
+Added: classes/db/errors.php
+===================================================================
+--- classes/db/errors.php	2007-03-04 21:02:36 UTC (rev 1)
++++ classes/db/errors.php	2007-03-06 15:21:54 UTC (rev 2)
+@@ -0,0 +1,7 @@
++<?php
++	
++	define(ERR_DB_CONNECT, 'Could not establish connection');
++	define(ERR_DB_SELECT,  'Database could not be selected');
++	define(ERR_DB_QUERY,   'Query could not be executed');
++	
++?>
+\ No newline at end of file
+
+Modified: classes/server/settings.php
+===================================================================
+--- classes/server/settings.php	2007-03-04 21:02:36 UTC (rev 1)
++++ classes/server/settings.php	2007-03-06 15:21:54 UTC (rev 2)
+@@ -1,10 +1,21 @@
+ <?php
+ 	
+-	declare(MYHASH = 'pinytesthash')
+-	declare(SEEDDB = 'piny_seeddb');
++	define(MYHASH, 'pinytesthash');
++	define(SEEDDB, 'piny_seeddb');
+ 	
+-	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/');
++	define(DB_MYSQL, 'mysql');
++	define(DB_PGSQL, 'pgsql');
++	define(DB_MYQSLI, 'mysqli');
+ 	
++	define(DB_TYPE, DB_MYSQL);
++	define(DB_HOST, 'localhost');
++	define(DB_PORT, '3306');
++	define(DB_USER, 'root');
++	define(DB_PWD, '');
++	define(DB_NAME, 'piny');
++	
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
++	
+ 	function settingsGetVersion() {
+ 	}
+ 	
+@@ -12,7 +23,7 @@
+ 	}
+ 	
+ 	function settingsCheckInput($post) {
+-		return $post;
++		return strip_tags($post);
+ 	}
+ 	
+ ?>
+\ No newline at end of file
+
+
+
+From karlchenofhell at mail.berlios.de  Tue Mar  6 20:42:43 2007
+From: karlchenofhell at mail.berlios.de (karlchenofhell at BerliOS)
+Date: Tue, 6 Mar 2007 20:42:43 +0100
+Subject: [Piny-svn] r3 - / classes/db classes/seed classes/yacy sql yacy
+Message-ID: <200703061942.l26Jgh53026070@sheep.berlios.de>
+
+Author: karlchenofhell
+Date: 2007-03-06 20:42:42 +0100 (Tue, 06 Mar 2007)
+New Revision: 3
+
+Added:
+   sql/
+   sql/openhellos.sql
+   sql/seeddb.sql
+Modified:
+   classes/db/db.php
+   classes/seed/seeddb.php
+   classes/yacy/core.php
+   yacy/hello.php
+Log:
+- added SQL-table create statements for seed-db and openhellos
+- extended db a bit
+- added openhellos to hello.php to verify the passed key on handshake
+- added corePeerPing function
+
+Modified: classes/db/db.php
+===================================================================
+--- classes/db/db.php	2007-03-06 15:21:54 UTC (rev 2)
++++ classes/db/db.php	2007-03-06 19:42:42 UTC (rev 3)
+@@ -38,9 +38,9 @@
+ 		 * @return an associative array <code>[line-number]['column-name'] => value</code>
+ 		 */
+ 		/* public */
+-		function getAll() {
++		function getAll($colarrkey = null) {
+ 			$sql = 'SELECT * FROM `'. $this->table .'`;';
+-			return $this->fetchArray($sql, DB_TYPE.'_ASSOC');
++			return $this->fetchArray($sql, DB_TYPE.'_ASSOC', $colarrkey);
+ 		}
+ 		
+ 		/**
+@@ -58,9 +58,9 @@
+ 		 *                        if no row matching <code>cols</code> or <code>where</code> could be found.</p>
+ 		 */
+ 		/* public */
+-		function getAssoc($cols, $where = null) {
++		function getAssoc($cols, $where = null, $colarrkey = null) {
+ 			$sql = $this->assSelect($cols) .' FROM `'. $this->table .'` '. $this->assWhere($where) .';';
+-			return $this->db->fetchArray($sql, DB_TYPE.'_ASSOC');
++			return $this->db->fetchArray($sql, DB_TYPE.'_ASSOC', $colarrkey = null);
+ 		}
+ 		
+ 		/**
+@@ -78,9 +78,9 @@
+ 		 *                        if no row matching <code>cols</code> or <code>where</code> could be found.</p>
+ 		 */
+ 		/* public */
+-		function get($cols, $where = null) {
++		function get($cols, $where = null, $colarrkey = null) {
+ 			$sql = $this->assSelect($cols) .' FROM `'. $this->table .'` '. $this->assWhere($where) .';';
+-			return $this->fetchArray($sql, DB_TYPE.'_NUM');
++			return $this->fetchArray($sql, DB_TYPE.'_NUM', $colarrkey);
+ 		}
+ 		
+ 		/**
+@@ -109,13 +109,65 @@
+ 			return $r;
+ 		}
+ 		
++		function add($cols) {
++			$sql = 'INSERT INTO `'. $this->table .'` (';
++			foreach (array_keys($cols[0]) as $col) {
++				$sql .= $col .',';
++			}
++			$sql = substr($sql, 0, -1) .') VALUES (';
++			foreach ($cols as $col) {
++				foreach ($col as $value) {
++					if (is_string($value)) {
++						$sql .= "'$value',";
++					} else {
++						$sql .= "$value,":
++					}
++				}
++				$sql = substr($sql, 0, -1) .'), (';
++			}
++			$sql = substr($sql, 0, -2);
++			return $this->query($sql, $this->conn);
++		}
++		
++		/* public */
++		function addSingle($cols) {
++			$sql = 'INSERT INTO `'. $this->table .'` (';
++			foreach (array_keys($cols) as $col) {
++				$sql .= $col .',';
++			}
++			$sql = substr($sql, 0, -1) .') VALUES (';
++			foreach ($cols as $value) {
++				if (is_string($value)) {
++					$sql .= "'$value',";
++				} else {
++					$sql .= "$value,":
++				}
++			}
++			$sql = substr($sql, 0, -1) .';';
++			return $this->query($sql, $this->conn) || die(ERR_DB_QUERY.':'. $this->error());
++		}
++		
++		/* public */
++		function putSingle($cols) {
++		}
++		
++		function updateSingle($cols, $where) {
++		}
++		
++		function removeSingle($where) {
++		}
++		
+ 		/* private */
+-		function fetchArray($sql, $flags) {
++		function fetchArray($sql, $flags, $colarrkey = null) {
+ 			if ($sql == null || !is_string($sql)) return null;
+ 			$res = $this->query($sql, $this->conn) || die(ERR_DB_QUERY.':'. $this->error());
+ 			$r = array();
+ 			while ($row = $fetch_array($res, $flags)) {
+-				$r[] = $row;
++				if ($colarrkey == null) {
++					$r[] = $row;
++				} else {
++					$r[$row[$colarrkey]] = $row;
++				}
+ 			}
+ 			$free_result($res);
+ 			return $r;
+
+Modified: classes/seed/seeddb.php
+===================================================================
+--- classes/seed/seeddb.php	2007-03-06 15:21:54 UTC (rev 2)
++++ classes/seed/seeddb.php	2007-03-06 19:42:42 UTC (rev 3)
+@@ -1,7 +1,7 @@
+ <?
+ 	
+-	require_once('classes/server/settings.php');
+-	require_once('classes/db/db.php');
++	include_once('../server/settings.php');
++	require_once('db/db.php');
+ 	
+ 	function splitArray($array, $char) {
+ 		$r = array();
+@@ -23,13 +23,7 @@
+         
+         function peer($seed) {
+         	if (is_string($seed)) {
+-				switch (substr($seed, 0, 1)) {
+-					case 'p': $plainlist = substr($seed, 2); break;                   // plain text
+-					case 'b': $plainlist = base64_decode(substr($seed, 2)); break;    // base64-encoded
+-					default: $plainlist = substr($seed, 2); break;
+-				}
+-				$plainlist = substr($plainlist, 1, -1);        // kill '{' on beginning and '}' at the end
+-				$this->seed = splitArray(explode(',', $plainlist), '=');
++        		$this->seed = self::getArrayFromSeed($seed);
+ 			} else if (is_array($seed)) {
+ 				$this->seed = $seed;
+ 			}
+@@ -75,6 +69,16 @@
+         function toSeed() {
+         	return '{'. implode(',', $this->seed) .'}';
+         }
++        
++        function getArrayFromSeed($seed) {
++			switch (substr($seed, 0, 1)) {
++				case 'p': $plainlist = substr($seed, 2); break;                   // plain text
++				case 'b': $plainlist = base64_decode(substr($seed, 2)); break;    // base64-encoded
++				default: $plainlist = substr($seed, 2); break;
++			}
++			$plainlist = substr($plainlist, 1, -1);        // kill '{' on beginning and '}' at the end
++			return splitArray(explode(',', $plainlist), '=');
++		}
+     }
+     
+     function seeddbGetPeer($seed) {
+@@ -82,7 +86,53 @@
+     }
+     
+     function seeddbGetMyPeer() {
+-    	return new peer(dbGetFromHash(MYHASH, SEEDDB));
++    	$seeddb = new db(SEEDDB);
++    	$arr = $seeddb->getAssoc(
++    			array(
++    					'Hash',
++    					'Type' => 'PeerType',
++    					'IPType',
++    					'Tags',
++    					'Port',
++    					'IP',
++    					'rI',
++    					'sI',
++    					'rU',
++    					'rI',
++    					'Uptime',
++    					'Version',
++    					'LastSeen',
++    					'Name',
++    					'CCount',
++    					'SCount',
++    					'news',
++    					'USpeed',
++    					'CRTCnt',
++    					'CRWCnt',
++    					'BDate',
++    					'LCount',
++    					'ICount',
++    					'ISpeed',
++    					'RSpeed',
++    					'Flags'
++    			),
++    			array('Hash' => MYHASH)
++    	);
++    	if ($arr === false) throw new Exception('MYHASH could not be found in seed-db');
++    	return new seed($arr[0]);
+     }
+ 	
++	function updatePeer($hash, $version, $uptime, $type) {
++		$db = new db(SEEDDB);
++		return $db->updateSingle(array('Version' => $version, 'Uptime' => $uptime, 'Type' => $type), array('Hash' => $hash));
++	}
++	
++	function updateFromSeeds($seeds) {
++		$db = new db(SEEDDB);
++		$i = 0;
++		foreach ($seeds as $seed) {
++			if ($db->putSingle(peer::getArrayFromSeed($seed))) $i++;
++		}
++		return $i;
++	}
+ ?>
+\ No newline at end of file
+
+Modified: classes/yacy/core.php
+===================================================================
+--- classes/yacy/core.php	2007-03-06 15:21:54 UTC (rev 2)
++++ classes/yacy/core.php	2007-03-06 19:42:42 UTC (rev 3)
+@@ -1,6 +1,25 @@
+ <?php
+ 	
++	include_once('../server/settings.php');
++	include_once('yacy/errors.php');
++	require_once('db/db.php');
++	require_once('seed/seeddb.php');
++	
+ 	function corePeerPing($peer) {
++		$key = rand(0,10000);
++		$db = new db(OPENHELLOS);
++		if (!$db->addSingle(array('key' => $key, 'Hash' => $peer->getHash()))) die(ERR_YACY_DB_SAVE);
++		$host = 'http://'. $peer->getAddress() .'/yacy/hello.html';
++		$args = "key=$key&seed=".MYHASH."&count=20";
++		$hello = explode("\n", file_get_contents("$host?$args"));
++		echo 'corePeerPing '. $peer->getHash() .':';
++		echo updatePeer(
++				$peer->getHash(),
++				explode('=', $hello[0])[1],
++				explode('=', $hello[1])[1],
++				explode('=', $hello[4])[1]
++		) . chr(10);
++		updateFromSeeds(array_slice($hello, 5));
+ 	}
+ 	
+ 	function corePeerArrival($peer) {
+
+Added: sql/openhellos.sql
+===================================================================
+--- sql/openhellos.sql	2007-03-06 15:21:54 UTC (rev 2)
++++ sql/openhellos.sql	2007-03-06 19:42:42 UTC (rev 3)
+@@ -0,0 +1,7 @@
++-- openhellos: holding the hashes to the peers and the key used to communicate
++
++CREATE TABLE `openhellos` (
++	`Hash` char(12),
++	`key` smallint UNSIGNED,
++	PRIMARY KEY (`Hash`)
++);
+\ No newline at end of file
+
+Added: sql/seeddb.sql
+===================================================================
+--- sql/seeddb.sql	2007-03-06 15:21:54 UTC (rev 2)
++++ sql/seeddb.sql	2007-03-06 19:42:42 UTC (rev 3)
+@@ -0,0 +1,33 @@
++-- `seeddb` table structure
++--
++-- FlexWidthArray properties: rowdef=byte[] key-20, byte[] node-480
++
++CREATE TABLE `piny_seeddb` (
++	`Hash` char(12),			-- peer-hash, 12 byte
++	`Type` tinyint,				-- peer-type: 0 = virgin, 1 = junior, 2 = senior, 3 = principal
++	`IPType` varchar(40),		-- always "&empty;" as far as I have seen
++	`Tags` varchar(255),		-- self-defined tags for the own index
++	`Port` smallint UNSIGNED,	-- peer-port (0-65535)
++	`IP` varchar(40),			-- peer-ip or (if set) static hostname
++	`rI` integer UNSIGNED,		-- number of received words
++	`sI` integer UNSIGNED,		-- number of sent words
++	`rU` integer UNSIGNED,		-- number of received URLs
++	`sU` integer UNSIGNED,		-- number of sent URLs
++	`Uptime` timestamp,			-- the peer's uptime
++	`Version` double(14,12),	-- the peer's yacy-version, i.e. v13.5230123443
++	`LastSeen` timestamp,		-- time this peer was last pinged
++	`Name` varchar(40),			-- the peer's name
++	`CCount` float(5),			-- connects per hour, i.e. 0.48
++	`SCount` smallint UNSIGNED,	-- number of seeds, this peer has stored
++	`news` varchar(255)			-- any news this peer knows about
++	`USpeed` smallint UNSIGNED,	-- computed uplink speed of this peer
++	`CRTCnt` smallint UNSIGNED,	-- number of files: citation rank other
++	`CRWCnt` smallint UNSIGNED,	-- number of files: citation rank own
++	`BDate` timestamp,			-- timestamp of first start-up
++	`LCount` integer UNSIGNED,	-- number of links this peer has stored (LURL)
++	`ICount` integer UNSIGNED,	-- number of words this peer has stored (RWI)
++	`ISpeed` float(5),			-- indexed pages per minute, PPM
++	`RSpeed` float(5),			-- queries per minute
++	`Flags` char(4),			-- peer-flags
++	PRIMARY KEY (`Hash`)
++);
+
+Modified: yacy/hello.php
+===================================================================
+--- yacy/hello.php	2007-03-06 15:21:54 UTC (rev 2)
++++ yacy/hello.php	2007-03-06 19:42:42 UTC (rev 3)
+@@ -1,10 +1,12 @@
+ <?php
+ 	
+ 	include_once('../classes/server/settings.php');
+-	require_once('classes/seed/seeddb.php');
+-	require_once('classes/yacy/client.php');
+-	require_once('classes/yacy/version.php');
+-	require_once('classes/yacy/core.php');
++	include_once('errors.php');
++	require_once('seed/seeddb.php');
++	require_once('yacy/client.php');
++	require_once('yacy/version.php');
++	require_once('yacy/core.php');
++	require_once('db/db.php');
+ 	
+ 	$post = settingsCheckInput($_GET);
+ 	
+@@ -13,6 +15,9 @@
+ 		$key = $post['key'];
+ 		$count = $post['count'];
+ 		
++		$db = new db(OPENHELLOS);
++		if (!$sb->removeSingle(array('Hash' => $peer-getHash()))) die(ERR_YACY_HELLO_NO_KEY.': '. $peer->getHash());
++		
+ 		$myversion = settingsGetVersion();
+ 		$uptime = settingsGetUptime();
+ 		
+
+
+
+From karlchenofhell at mail.berlios.de  Tue Mar  6 22:40:15 2007
+From: karlchenofhell at mail.berlios.de (karlchenofhell at BerliOS)
+Date: Tue, 6 Mar 2007 22:40:15 +0100
+Subject: [Piny-svn] r4 - classes/db classes/seed classes/server classes/yacy
+	sql yacy
+Message-ID: <200703062140.l26LeFiD009109@sheep.berlios.de>
+
+Author: karlchenofhell
+Date: 2007-03-06 22:40:14 +0100 (Tue, 06 Mar 2007)
+New Revision: 4
+
+Added:
+   classes/yacy/errors.php
+   yacy/errors.php
+Modified:
+   classes/db/db.php
+   classes/seed/seeddb.php
+   classes/server/settings.php
+   classes/yacy/client.php
+   classes/yacy/core.php
+   sql/seeddb.sql
+   yacy/hello.php
+Log:
+- fixed many bugs in db
+- some fixes because of wrong local php-version (was 5)
+- hello should be working now
+
+Modified: classes/db/db.php
+===================================================================
+--- classes/db/db.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/db/db.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,34 +1,21 @@
+ <?php
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+ 	
+-	include_once('../server/settings.php');
++	include_once('server/settings.php');
+ 	include_once('db/errors.php');
+ 	
+ 	class db {
+ 		var $conn;				// connection resource
+ 		var $table;				// name of the table
+ 		
+-		var $connect;			// name of connect-method, dependant on DB_TYPE
+-		var $close;				// name of close-method, dependant on DB_TYPE
+-		var $query;				// name of query-method, dependant on DB_TYPE
+-		var $fetch_array;		// name of fetch_array-method, dependant on DB_TYPE
+-		var $free_result;		// name of free_result-method, dependant on DB_TYPE
+-		var $escape_string;		// name of escape_string-method, dependant on DB_TYPE
+-		var $select_db;			// name of select_db-method, dependant on DB_TYPE
+-		var $error;				// name of error-method, depandant on DB_TYPE
+-		var $fetch_object;		// name of fetch_object-method, dependant on DB_TYPE
+-		
+-		function __construct($table) {
+-			if (!is_string(DB_TYPE) || strlen(DB_TYPE) == 0) throw new Exception('DB_TYPE has not been set!');
+-			$this->connect = DB_TYPE.'_connect';
+-			$this->close = DB_TYPE.'_close';
+-			$this->query = DB_TYPE.'_query';
+-			$this->fetch_array = DB_TYPE.'_fetch_array';
+-			$this->free_result = DB_TYPE.'_free_result';
+-			$this->escape_string = DB_TYPE.'_escape_string';
+-			$this->select_db = DB_TYPE.'_select_db';
++		function db($table) {
++			if (!is_string(DB_TYPE) || strlen(DB_TYPE) == 0) die('DB_TYPE has not been set!');
++			$connect = DB_TYPE.'_connect';
++			$select_db = DB_TYPE.'_select_db';
++			$error = DB_TYPE.'_error';
+ 			
+-			$this->conn = $this->connect(DB_HOST.':'.DB_PORT, DB_USER, DB_PWD, false) || die(ERR_DB_CONNECT.':'. $this->error());
+-			$this->select_db(DB_NAME, $this->conn) || die(ERR_DB_SELECT.':'. $this->error());
++			$this->conn = $connect(DB_HOST.':'.DB_PORT, DB_USER, DB_PWD, false) or die(ERR_DB_CONNECT.':'. $error());
++			$select_db(DB_NAME, $this->conn) or die(ERR_DB_SELECT.':'. $error());
+ 			$this->table = $table;
+ 		}
+ 		
+@@ -40,7 +27,7 @@
+ 		/* public */
+ 		function getAll($colarrkey = null) {
+ 			$sql = 'SELECT * FROM `'. $this->table .'`;';
+-			return $this->fetchArray($sql, DB_TYPE.'_ASSOC', $colarrkey);
++			return $this->fetchArray($sql, constant(strtoupper(DB_TYPE).'_ASSOC'), $colarrkey);
+ 		}
+ 		
+ 		/**
+@@ -60,7 +47,7 @@
+ 		/* public */
+ 		function getAssoc($cols, $where = null, $colarrkey = null) {
+ 			$sql = $this->assSelect($cols) .' FROM `'. $this->table .'` '. $this->assWhere($where) .';';
+-			return $this->db->fetchArray($sql, DB_TYPE.'_ASSOC', $colarrkey = null);
++			return $this->fetchArray($sql, constant(strtoupper(DB_TYPE).'_ASSOC'), $colarrkey = null);
+ 		}
+ 		
+ 		/**
+@@ -80,7 +67,7 @@
+ 		/* public */
+ 		function get($cols, $where = null, $colarrkey = null) {
+ 			$sql = $this->assSelect($cols) .' FROM `'. $this->table .'` '. $this->assWhere($where) .';';
+-			return $this->fetchArray($sql, DB_TYPE.'_NUM', $colarrkey);
++			return $this->fetchArray($sql, constant(strtoupper(DB_TYPE).'_NUM'), $colarrkey);
+ 		}
+ 		
+ 		/**
+@@ -100,12 +87,14 @@
+ 		 */
+ 		/* public */
+ 		function getSingle($cols, $where) {
+-			if ($col == null || !is_string($col)) throw new Exception('Illegal Argument: $col: '. $col);
+-			if ($where == null || strlen($w = self::assWhere($where)) == 0) throw new Exception('Illegal Argument: $where: '. $where);
++			if ($col == null || !is_string($col)) die('Illegal Argument: $col: '. $col);
++			if ($where == null || strlen($w = self::assWhere($where)) == 0) die('Illegal Argument: $where: '. $where);
+ 			$sql = self::assSelect($cols) .' FROM `'. $this->table ."` $w;";
+-			$res = $this->query($sql, $this->conn) || die(ERR_DB_QUERY.':'. $this->error());
++			$query = DB_TYPE.'_query';
++			$res = $query($sql, $this->conn) or die(ERR_DB_QUERY.':'. $this->error());
+ 			$r = $this->fetch_object($res);
+-			$this->free_result($res);
++			$free_result = DB_TYPE.'_free_result';
++			$free_result($res);
+ 			return $r;
+ 		}
+ 		
+@@ -120,13 +109,14 @@
+ 					if (is_string($value)) {
+ 						$sql .= "'$value',";
+ 					} else {
+-						$sql .= "$value,":
++						$sql .= "$value,";
+ 					}
+ 				}
+ 				$sql = substr($sql, 0, -1) .'), (';
+ 			}
+ 			$sql = substr($sql, 0, -2);
+-			return $this->query($sql, $this->conn);
++			$query = DB_TYPE.'_query';
++			return $query($sql, $this->conn);
+ 		}
+ 		
+ 		/* public */
+@@ -140,11 +130,13 @@
+ 				if (is_string($value)) {
+ 					$sql .= "'$value',";
+ 				} else {
+-					$sql .= "$value,":
++					$sql .= "$value,";
+ 				}
+ 			}
+ 			$sql = substr($sql, 0, -1) .';';
+-			return $this->query($sql, $this->conn) || die(ERR_DB_QUERY.':'. $this->error());
++			$query = DB_TYPE.'_query';
++			$error = DB_TYPE.'_error';
++			return $query($sql, $this->conn) or die(ERR_DB_QUERY.':'. $error());
+ 		}
+ 		
+ 		/* public */
+@@ -160,8 +152,11 @@
+ 		/* private */
+ 		function fetchArray($sql, $flags, $colarrkey = null) {
+ 			if ($sql == null || !is_string($sql)) return null;
+-			$res = $this->query($sql, $this->conn) || die(ERR_DB_QUERY.':'. $this->error());
++			$query = DB_TYPE.'_query';
++			$error = DB_TYPE.'_error';
++			$res = $query($sql, $this->conn) or die(ERR_DB_QUERY.':'. $error());
+ 			$r = array();
++			$fetch_array = DB_TYPE.'_fetch_array';
+ 			while ($row = $fetch_array($res, $flags)) {
+ 				if ($colarrkey == null) {
+ 					$r[] = $row;
+@@ -169,6 +164,7 @@
+ 					$r[$row[$colarrkey]] = $row;
+ 				}
+ 			}
++			$free_result = DB_TYPE.'_free_result';
+ 			$free_result($res);
+ 			return $r;
+ 		}
+@@ -176,12 +172,13 @@
+ 		/* private */
+ 		function assSelect($cols) {
+ 			$sql = 'SELECT ';
++			$escape_string = DB_TYPE.'_escape_string';
+ 			if (is_array($cols)) {
+ 				foreach ($cols as $col => $colname) {
+-					if (!is_integer($col)) $sql .= '`'. $this->escape_string($col) .'` AS ';
+-					$sql .= $this->escape_string($colname) .',';
++					if (!is_integer($col)) $sql .= '`'. $escape_string($col) .'` AS ';
++					$sql .= $escape_string($colname) .', ';
+ 				}
+-				$sql = substr($sql, 0, -1);
++				$sql = substr($sql, 0, -2);
+ 			} else {
+ 				$sql .= '*';
+ 			}
+@@ -191,20 +188,22 @@
+ 		/* private */
+ 		function assWhere($where) {
+ 			$sql = '';
++			$escape_string = DB_TYPE.'_escape_string';
+ 			if (is_array($where)) {
+ 				$sql .= 'WHERE ';
+ 				foreach ($where as $key => $expr) {
+-					$sql .= '\''. $this->escape_string($key) .'\' = `'. $this->escape_string($expr) .'` AND ';
++					$sql .= '`'. $escape_string($key) .'` = \''. $escape_string($expr) .'\' AND ';
+ 				}
+ 				$sql = substr($sql, 0, -5);
+ 			} else if (is_string($where)) {
+-				$sql .= 'WHERE '. $this->escape_string($where);
++				$sql .= 'WHERE '. $escape_string($where);
+ 			}
+ 			return $sql;
+ 		}
+ 		
+ 		function __destruct() {
+-			$this->close($this->conn);
++			$close = DB_TYPE.'_close';
++			$close($this->conn);
+ 		}
+ 	}
+ 	
+
+Modified: classes/seed/seeddb.php
+===================================================================
+--- classes/seed/seeddb.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/seed/seeddb.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,6 +1,7 @@
+-<?
++<?php
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+ 	
+-	include_once('../server/settings.php');
++	include_once('server/settings.php');
+ 	require_once('db/db.php');
+ 	
+ 	function splitArray($array, $char) {
+@@ -23,7 +24,7 @@
+         
+         function peer($seed) {
+         	if (is_string($seed)) {
+-        		$this->seed = self::getArrayFromSeed($seed);
++        		$this->seed = peer::getArrayFromSeed($seed);
+ 			} else if (is_array($seed)) {
+ 				$this->seed = $seed;
+ 			}
+@@ -58,7 +59,42 @@
+         function getNCount()       { return $this->seed['NCount']; }
+         function getFlags()        { return $this->seed['Flags']; }
+         
++        function setHash($value)         { $this->seed['Hash'] = $value; }
++        function setIPType($value)       { $this->seed['IPType'] = $value; }
++        function setTags($value)         { $this->seed['Tags'] = $value; }
++        function setPort($value)         { $this->seed['Port'] = $value; }
++        function setIP($value)           { $this->seed['IP'] = $value; }
++        function setRI($value)           { $this->seed['rI'] = $value; }
++        function setUptime($value)       { $this->seed['Uptime'] = $value; }
++        function setVersion($value)      { $this->seed['Version'] = $value; }
++        function setUTC($value)          { $this->seed['UTC'] = $value; }
++        function setPeerType($value)     { $this->seed['PeerType'] = $value; }
++        function setSI($value)           { $this->seed['sI'] = $value; }
++        function setLastSeen($value)     { $this->seed['LastSeen'] = $value; }
++        function setName($value)         { $this->seed['Name'] = $value; }
++        function setCCount($value)       { $this->seed['CCount'] = $value; }
++        function setSCount($value)       { $this->seed['SCount'] = $value; }
++        function setNews($value)         { $this->seed['news'] = $value; }
++        function setUSpeed($value)       { $this->seed['USpeed'] = $value; }
++        function setCRTCount($value)     { $this->seed['CRTCnt'] = $value; }
++        function setCRWCount($value)     { $this->seed['CRWCnt'] = $value; }
++        function setBirthDate($value)    { $this->seed['BDate'] = $value; }
++        function setLinks($value)        { $this->seed['LCount'] = $value; }
++        function setRU($value)           { $this->seed['rU'] = $value; }
++        function setWords($value)        { $this->seed['ICount'] = $value; }
++        function setSU($value)           { $this->seed['sU'] = $value; }
++        function setISpeed($value)       { $this->seed['ISpeed'] = $value; }
++        function setRSpeed($value)       { $this->seed['RSpeed'] = $value; }
++        function setNCount($value)       { $this->seed['NCount'] = $value; }
++        function setFlags($value)        { $this->seed['Flags'] = $value; }
++        
++        function getVersionDbl() {
++        	$version = $this->getVersion();
++        	return (double)$version;
++        }
++        
+         function getAddress() {
++        	echo var_dump($this->seed);
+         	return $this->getIP() .':'. $this->getPort();
+         }
+         
+@@ -77,7 +113,12 @@
+ 				default: $plainlist = substr($seed, 2); break;
+ 			}
+ 			$plainlist = substr($plainlist, 1, -1);        // kill '{' on beginning and '}' at the end
+-			return splitArray(explode(',', $plainlist), '=');
++			$arr = splitArray(explode(',', $plainlist), '=');
++			$r = array();
++			foreach ($arr as $key => $val) {
++				$r[trim($key)] = trim($val);
++			}
++			return $r;
+ 		}
+     }
+     
+@@ -118,8 +159,8 @@
+     			),
+     			array('Hash' => MYHASH)
+     	);
+-    	if ($arr === false) throw new Exception('MYHASH could not be found in seed-db');
+-    	return new seed($arr[0]);
++    	if ($arr === false || count($arr) == 0) die('MYHASH could not be found in seed-db');
++    	return new peer($arr[0]);
+     }
+ 	
+ 	function updatePeer($hash, $version, $uptime, $type) {
+@@ -129,10 +170,10 @@
+ 	
+ 	function updateFromSeeds($seeds) {
+ 		$db = new db(SEEDDB);
+-		$i = 0;
++		$arr = array();
+ 		foreach ($seeds as $seed) {
+-			if ($db->putSingle(peer::getArrayFromSeed($seed))) $i++;
++			$arr[] = peer::getArrayFromSeed($seed);
+ 		}
+-		return $i;
++		return $db->put($arr);
+ 	}
+ ?>
+\ No newline at end of file
+
+Modified: classes/server/settings.php
+===================================================================
+--- classes/server/settings.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/server/settings.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -4,14 +4,14 @@
+ 	define(SEEDDB, 'piny_seeddb');
+ 	
+ 	define(DB_MYSQL, 'mysql');
+-	define(DB_PGSQL, 'pgsql');
++	define(DB_PGSQL, 'pg');
+ 	define(DB_MYQSLI, 'mysqli');
+ 	
+ 	define(DB_TYPE, DB_MYSQL);
+ 	define(DB_HOST, 'localhost');
+ 	define(DB_PORT, '3306');
+ 	define(DB_USER, 'root');
+-	define(DB_PWD, '');
++	define(DB_PWD, 'esC4p3n0w');
+ 	define(DB_NAME, 'piny');
+ 	
+ 	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+@@ -23,7 +23,10 @@
+ 	}
+ 	
+ 	function settingsCheckInput($post) {
+-		return strip_tags($post);
++		foreach ($post as $key => $value) {
++			$post[$key] = strip_tags($value);
++		}
++		return $post;
+ 	}
+ 	
+ ?>
+\ No newline at end of file
+
+Modified: classes/yacy/client.php
+===================================================================
+--- classes/yacy/client.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/yacy/client.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,10 +1,14 @@
+ <?php
+ 	
+-	require_once('classes/seed/seeddb.php');
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+ 	
++	include_once('server/settings.php');
++	require_once('seed/seeddb.php');
++	
+ 	function clientQueryURLCount($peer) {
++		$mypeer = seeddbGetMyPeer();
+ 		$request = 'http://'. $peer->getAddress() .'/query.html'
+-				.'?iam='. seeddbGetMyPeer()->getHash()
++				.'?iam='. $mypeer->getHash()
+ 				.'&youare='. $peer->getHash()
+ 				.'&key='
+ 				.'&object=lurlcount'
+
+Modified: classes/yacy/core.php
+===================================================================
+--- classes/yacy/core.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/yacy/core.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,6 +1,8 @@
+ <?php
+ 	
+-	include_once('../server/settings.php');
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
++	
++	include_once('server/settings.php');
+ 	include_once('yacy/errors.php');
+ 	require_once('db/db.php');
+ 	require_once('seed/seeddb.php');
+@@ -12,13 +14,8 @@
+ 		$host = 'http://'. $peer->getAddress() .'/yacy/hello.html';
+ 		$args = "key=$key&seed=".MYHASH."&count=20";
+ 		$hello = explode("\n", file_get_contents("$host?$args"));
+-		echo 'corePeerPing '. $peer->getHash() .':';
+-		echo updatePeer(
+-				$peer->getHash(),
+-				explode('=', $hello[0])[1],
+-				explode('=', $hello[1])[1],
+-				explode('=', $hello[4])[1]
+-		) . chr(10);
++		$arr = splitArray(array_slice($hello, 0, 4));
++		updatePeer($peer->getHash(), $arr['myversion'], $arr['uptime'], $arr['mytype']);
+ 		updateFromSeeds(array_slice($hello, 5));
+ 	}
+ 	
+
+Added: classes/yacy/errors.php
+===================================================================
+--- classes/yacy/errors.php	2007-03-06 19:42:42 UTC (rev 3)
++++ classes/yacy/errors.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -0,0 +1,3 @@
++<?php
++
++?>
+\ No newline at end of file
+
+Modified: sql/seeddb.sql
+===================================================================
+--- sql/seeddb.sql	2007-03-06 19:42:42 UTC (rev 3)
++++ sql/seeddb.sql	2007-03-06 21:40:14 UTC (rev 4)
+@@ -16,10 +16,10 @@
+ 	`Uptime` timestamp,			-- the peer's uptime
+ 	`Version` double(14,12),	-- the peer's yacy-version, i.e. v13.5230123443
+ 	`LastSeen` timestamp,		-- time this peer was last pinged
+-	`Name` varchar(40),			-- the peer's name
++	`name` varchar(40),			-- the peer's name
+ 	`CCount` float(5),			-- connects per hour, i.e. 0.48
+ 	`SCount` smallint UNSIGNED,	-- number of seeds, this peer has stored
+-	`news` varchar(255)			-- any news this peer knows about
++	`news` varchar(255),			-- any news this peer knows about
+ 	`USpeed` smallint UNSIGNED,	-- computed uplink speed of this peer
+ 	`CRTCnt` smallint UNSIGNED,	-- number of files: citation rank other
+ 	`CRWCnt` smallint UNSIGNED,	-- number of files: citation rank own
+
+Added: yacy/errors.php
+===================================================================
+--- yacy/errors.php	2007-03-06 19:42:42 UTC (rev 3)
++++ yacy/errors.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -0,0 +1,5 @@
++<?php
++	
++	define(ERR_YACY_HELLO_NO_KEY, 'Hello without key');
++	
++?>
+\ No newline at end of file
+
+Modified: yacy/hello.php
+===================================================================
+--- yacy/hello.php	2007-03-06 19:42:42 UTC (rev 3)
++++ yacy/hello.php	2007-03-06 21:40:14 UTC (rev 4)
+@@ -1,7 +1,9 @@
+ <?php
+ 	
+-	include_once('../classes/server/settings.php');
+-	include_once('errors.php');
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
++	
++	include_once('server/settings.php');
++	include_once('./errors.php');
+ 	require_once('seed/seeddb.php');
+ 	require_once('yacy/client.php');
+ 	require_once('yacy/version.php');
+@@ -16,7 +18,7 @@
+ 		$count = $post['count'];
+ 		
+ 		$db = new db(OPENHELLOS);
+-		if (!$sb->removeSingle(array('Hash' => $peer-getHash()))) die(ERR_YACY_HELLO_NO_KEY.': '. $peer->getHash());
++		if (!$db->removeSingle(array('Hash' => $peer->getHash()))) ;//die(ERR_YACY_HELLO_NO_KEY.': '. $peer->getHash());
+ 		
+ 		$myversion = settingsGetVersion();
+ 		$uptime = settingsGetUptime();
+
+
+
+From karlchenofhell at mail.berlios.de  Wed Mar  7 00:42:51 2007
+From: karlchenofhell at mail.berlios.de (karlchenofhell at BerliOS)
+Date: Wed, 7 Mar 2007 00:42:51 +0100
+Subject: [Piny-svn] r5 - classes/db classes/seed classes/server classes/yacy
+	sql yacy
+Message-ID: <200703062342.l26NgpIn019127@sheep.berlios.de>
+
+Author: karlchenofhell
+Date: 2007-03-07 00:42:50 +0100 (Wed, 07 Mar 2007)
+New Revision: 5
+
+Modified:
+   classes/db/db.php
+   classes/seed/seeddb.php
+   classes/server/settings.php
+   classes/yacy/client.php
+   sql/seeddb.sql
+   yacy/hello.php
+Log:
+- hello returns nice values now
+- fixed minor bugs in seeddb and elsewhere
+
+Modified: classes/db/db.php
+===================================================================
+--- classes/db/db.php	2007-03-06 21:40:14 UTC (rev 4)
++++ classes/db/db.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -61,6 +61,7 @@
+ 		 *                        All items of the array are AND-combined.</p>
+ 		 *                     <p>If a string is passed, it will be used as the complete <code>WHERE</code>-part of the SQL-statement.</p>
+ 		 *                     <p>If <code>null</null> is passed, or the argument is not used at all, the selection won't be restricted.</p>
++		 * @param string colorarrkey <p>
+ 		 * @return             <p>an non-associative array <code>[line-number][column-number] => value</code> or <code>false</code>
+ 		 *                        if no row matching <code>cols</code> or <code>where</code> could be found.</p>
+ 		 */
+@@ -83,7 +84,6 @@
+ 		 *                     <p>If <code>null</null> is passed, or the argument is not used at all, the selection won't be restricted.</p>
+ 		 * @return             <p>an <code>stdClass</code>-object containing the values of all selected columns as public variables or <code>false</code>
+ 		 *                        if no row matching <code>cols</code> or <code>where</code> could be found.</p>
+-		 * @throws Exception   if either <code>cols</code> or </code>where</where> is not usable.
+ 		 */
+ 		/* public */
+ 		function getSingle($cols, $where) {
+
+Modified: classes/seed/seeddb.php
+===================================================================
+--- classes/seed/seeddb.php	2007-03-06 21:40:14 UTC (rev 4)
++++ classes/seed/seeddb.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -4,6 +4,11 @@
+ 	include_once('server/settings.php');
+ 	require_once('db/db.php');
+ 	
++	define(PEERTYPE_PRINCIPAL, 'principal');
++	define(PEERTYPE_VIRGIN,    'virgin');
++	define(PEERTYPE_SENIOR,    'senior');
++	define(PEERTYPE_JUNIOR,    'junior');
++	
+ 	function splitArray($array, $char) {
+ 		$r = array();
+ 		$num = 0;
+@@ -94,18 +99,27 @@
+         }
+         
+         function getAddress() {
+-        	echo var_dump($this->seed);
+         	return $this->getIP() .':'. $this->getPort();
+         }
+         
+         function toB64Seed() {
+-        	return base64_encode($this->toSeed());
++        	return 'b|'. base64_encode($this->toSeed());
+         }
+         
+-        function toSeed() {
+-        	return '{'. implode(',', $this->seed) .'}';
++        function toPlainSeed() {
++        	return 'p|'. $this->toSeed();
+         }
+         
++        function toSeed($braces = true) {
++        	if ($braces) $r = '{';
++        	foreach ($this->seed as $key => $value) {
++        		if ($key != 'PeerType') $r .= "$key=$value,";
++        	}
++        	$r = substr($r, 0, -1);
++        	if ($braces) $sql .= '}';
++        	return $r;
++        }
++        
+         function getArrayFromSeed($seed) {
+ 			switch (substr($seed, 0, 1)) {
+ 				case 'p': $plainlist = substr($seed, 2); break;                   // plain text
+@@ -126,12 +140,53 @@
+     	return new peer($seed);
+     }
+     
++    function seeddbGetPeerFromHash($hash) {
++    }
++    
++    function seeddbGetRandomSeeds($count, $includeMe = true) {
++    	$seeddb = new db(SEEDDB);
++    	$arr[] = $seeddb->getAssoc(
++    			array(
++    					'Hash',
++    					'PeerType',
++    					'IPType',
++    					'Tags',
++    					'Port',
++    					'IP',
++    					'rI',
++    					'sI',
++    					'rU',
++    					'rI',
++    					'Uptime',
++    					'Version',
++    					'LastSeen',
++    					'Name',
++    					'CCount',
++    					'SCount',
++    					'news',
++    					'USpeed',
++    					'CRTCnt',
++    					'CRWCnt',
++    					'BDate',
++    					'LCount',
++    					'ICount',
++    					'ISpeed',
++    					'RSpeed',
++    					'Flags'
++    			));
++    	if (count($arr) < $count) $count = count($arr);
++    	if ($count > 1) $r = array_rand($arr, $count - 1);
++    	$mypeer = seeddbGetMyPeer();
++    	$r[] = $mypeer->toB64Seed();
++    	return $r;
++    }
++    
+     function seeddbGetMyPeer() {
+     	$seeddb = new db(SEEDDB);
+     	$arr = $seeddb->getAssoc(
+     			array(
+     					'Hash',
+-    					'Type' => 'PeerType',
++    					'PeerType',
+     					'IPType',
+     					'Tags',
+     					'Port',
+
+Modified: classes/server/settings.php
+===================================================================
+--- classes/server/settings.php	2007-03-06 21:40:14 UTC (rev 4)
++++ classes/server/settings.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -11,15 +11,17 @@
+ 	define(DB_HOST, 'localhost');
+ 	define(DB_PORT, '3306');
+ 	define(DB_USER, 'root');
+-	define(DB_PWD, 'esC4p3n0w');
++	define(DB_PWD, '');
+ 	define(DB_NAME, 'piny');
+ 	
+ 	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
+ 	
+ 	function settingsGetVersion() {
++		return 0.5;
+ 	}
+ 	
+ 	function settingsGetUptime() {
++		return 0;
+ 	}
+ 	
+ 	function settingsCheckInput($post) {
+
+Modified: classes/yacy/client.php
+===================================================================
+--- classes/yacy/client.php	2007-03-06 21:40:14 UTC (rev 4)
++++ classes/yacy/client.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -7,14 +7,14 @@
+ 	
+ 	function clientQueryURLCount($peer) {
+ 		$mypeer = seeddbGetMyPeer();
+-		$request = 'http://'. $peer->getAddress() .'/query.html'
++		$request = 'http://'. $peer->getAddress() .'/yacy/query.html'
+ 				.'?iam='. $mypeer->getHash()
+ 				.'&youare='. $peer->getHash()
+ 				.'&key='
+ 				.'&object=lurlcount'
+ 				.'&env='
+ 				.'&ttl=0';
+-		$result = splitArray(file_get_contents($request), '=');
++		$result = splitArray(explode("\n", file_get_contents($request)), '=');
+ 		return $result['response'];
+ 	}
+ 	
+
+Modified: sql/seeddb.sql
+===================================================================
+--- sql/seeddb.sql	2007-03-06 21:40:14 UTC (rev 4)
++++ sql/seeddb.sql	2007-03-06 23:42:50 UTC (rev 5)
+@@ -4,7 +4,7 @@
+ 
+ CREATE TABLE `piny_seeddb` (
+ 	`Hash` char(12),			-- peer-hash, 12 byte
+-	`Type` tinyint,				-- peer-type: 0 = virgin, 1 = junior, 2 = senior, 3 = principal
++	`PeerType` varchar(9),			-- peer-type: virgin, junior, senior, principal
+ 	`IPType` varchar(40),		-- always "&empty;" as far as I have seen
+ 	`Tags` varchar(255),		-- self-defined tags for the own index
+ 	`Port` smallint UNSIGNED,	-- peer-port (0-65535)
+@@ -16,7 +16,7 @@
+ 	`Uptime` timestamp,			-- the peer's uptime
+ 	`Version` double(14,12),	-- the peer's yacy-version, i.e. v13.5230123443
+ 	`LastSeen` timestamp,		-- time this peer was last pinged
+-	`name` varchar(40),			-- the peer's name
++	`Name` varchar(40),			-- the peer's name
+ 	`CCount` float(5),			-- connects per hour, i.e. 0.48
+ 	`SCount` smallint UNSIGNED,	-- number of seeds, this peer has stored
+ 	`news` varchar(255),			-- any news this peer knows about
+
+Modified: yacy/hello.php
+===================================================================
+--- yacy/hello.php	2007-03-06 21:40:14 UTC (rev 4)
++++ yacy/hello.php	2007-03-06 23:42:50 UTC (rev 5)
+@@ -1,6 +1,6 @@
+ <?php
+ 	
+-	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/piny/classes/');
++	ini_set('include_path', ini_get('include_path').':/var/www/localhost/htdocs/classes/');
+ 	
+ 	include_once('server/settings.php');
+ 	include_once('./errors.php');
+@@ -10,8 +10,7 @@
+ 	require_once('yacy/core.php');
+ 	require_once('db/db.php');
+ 	
+-	$post = settingsCheckInput($_GET);
+-	
++	$post = settingsCheckInput($_REQUEST);
+ 	if ($post['key'] && $post['seed'] && $post['count']) {
+ 		$peer = seeddbGetPeer($post['seed']);
+ 		$key = $post['key'];
+@@ -20,9 +19,6 @@
+ 		$db = new db(OPENHELLOS);
+ 		if (!$db->removeSingle(array('Hash' => $peer->getHash()))) ;//die(ERR_YACY_HELLO_NO_KEY.': '. $peer->getHash());
+ 		
+-		$myversion = settingsGetVersion();
+-		$uptime = settingsGetUptime();
+-		
+ 		$urls = -1;
+ 		$clientip = $_SERVER['REMOTE_ADDR'];
+ 		$reportedip = $peer->getIP();
+@@ -42,7 +38,7 @@
+ 			$urls = clientQueryURLCount($peer);
+ 		}
+ 		
+-		$peer->setLastSeenUTC();
++		//$peer->setLastSeenUTC();
+ 		
+ 		if ($urls >= 0) {
+ 			if ($peer->getPeerType == PEERTYPE_PRINCIPAL) {
+@@ -59,14 +55,23 @@
+ 			}
+ 		}
+ 		
+-		$seeds = seeddbGetRandomSeeds($count, true);
++		$myversion = settingsGetVersion();
++		$uptime = settingsGetUptime();
++		$mytime = date('YmdHis');
++		$mypeer = seeddbGetMyPeer();
++		$mytype = $mypeer->getPeerType();
+ 		
+ 		$result = "version=$myversion\n"
+ 				."uptime=$uptime\n"
+ 				."yourip=$yourip\n"
+ 				."yourtype=$yourtype\n"
+-				."mytype=$mytype\n"
+-				.implode("\n", $seeds);
++				."mytime=$mytime\n"
++				."mytype=$mytype\n";
++		$i = 0;
++		foreach (seeddbGetRandomSeeds($count, true) as $seed) {
++			$result .= "seed$i=$seed\n";
++			$i++;
++		}
+ 		
+ 		echo $result;
+ 		flush();
+
+
+
